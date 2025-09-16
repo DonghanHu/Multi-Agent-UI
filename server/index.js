@@ -742,11 +742,24 @@ app.post("/api/debate/phase1", async (req, res) => {
 
     if (USE_MOCK) {
       writeLine(res, { type: "info", message: "Using MOCK for Phase 1." });
-      const initialEvaluations = agents.map((a, i) => ({
-        agentId: a.agentId,
-        score: ((i % 5) + 1),
-        rationale: "Mock rationale (demo only)."
-      }));
+      console.log(`[MOCK Phase 1] Questions: ${qaPairs.length}, Agents: ${agents.length}, Total evaluations: ${qaPairs.length * agents.length}`);
+      
+      const initialEvaluations = [];
+      for (let qIdx = 0; qIdx < qaPairs.length; qIdx++) {
+        const qaPair = qaPairs[qIdx];
+        for (let aIdx = 0; aIdx < agents.length; aIdx++) {
+          const agent = agents[aIdx];
+          initialEvaluations.push({
+            agentId: agent.agentId,
+            questionIndex: qIdx,
+            question: qaPair.question,
+            answer: qaPair.answer,
+            score: ((aIdx + qIdx) % 5) + 1, // Vary scores based on agent and question
+            rationale: `Mock evaluation by ${agent.name || agent.agentId} for Q${qIdx + 1}: "${qaPair.question.substring(0, 50)}..."`
+          });
+        }
+      }
+      
       writeLine(res, { initialEvaluations });
       writeLine(res, { type: "success", message: "Phase 1 complete." });
       return res.end();
@@ -769,37 +782,59 @@ app.post("/api/debate/phase1", async (req, res) => {
       additionalProperties: false
     };
 
-    const qaBlob = JSON.stringify({ qaPairs }, null, 2);
     const results = [];
+    console.log(`[Phase 1] Questions to evaluate: ${qaPairs.length}, Agents: ${agents.length}, Total evaluations: ${qaPairs.length * agents.length}`);
 
-    for (const a of agents) {
-      writeLine(res, { type: "info", message: `Scoring as ${a.name || a.agentId}…` });
+    // Loop through each Q&A pair individually
+    for (let qIdx = 0; qIdx < qaPairs.length; qIdx++) {
+      const qaPair = qaPairs[qIdx];
+      const singleQABlob = JSON.stringify({
+        question: qaPair.question,
+        answer: qaPair.answer
+      }, null, 2);
 
-      const prompt = [
-        a.personaPrompt || "",
-        "",
-        tmpl
-          .replace("{QA_PAIRS}", qaBlob)
-          .replace("{LIKERT_SCALE}",
-            "1 – Strongly Disagree; 2 – Disagree; 3 – Neither Agree nor Disagree; 4 – Agree; 5 – Strongly Agree")
-      ].join("\n");
+      writeLine(res, { type: "info", message: `Evaluating Q&A pair ${qIdx + 1}/${qaPairs.length}` });
 
-      const out = await createStructuredJSON({
-        instructions: "Return strictly valid JSON for the evaluation.",
-        input: [{ role: "user", content: prompt }],
-        schema: evalSchema,
-        model: "gpt-4.1-mini",
-        temperature: 0.2
-      });
+      // For each Q&A pair, have each agent evaluate it
+      for (const a of agents) {
+        writeLine(res, { type: "info", message: `Agent ${a.name || a.agentId} evaluating Q&A ${qIdx + 1}` });
 
-      results.push({
-        agentId: a.agentId,
-        score: Number(out?.score ?? 3),
-        rationale: String(out?.rationale ?? "")
-      });
+        const prompt = [
+          a.instantiationPrompt || a.personaPrompt || "",
+          "",
+          tmpl
+            .replace("{QA_PAIRS}", singleQABlob)
+            .replace("{LIKERT_SCALE}",
+              "1 – Strongly Disagree; 2 – Disagree; 3 – Neither Agree nor Disagree; 4 – Agree; 5 – Strongly Agree")
+        ].join("\n");
 
-      // Stream partial as we go (optional)
-      writeLine(res, { partial: { agentId: a.agentId, score: results.at(-1).score } });
+        const out = await createStructuredJSON({
+          instructions: "Return strictly valid JSON for the evaluation.",
+          input: [{ role: "user", content: prompt }],
+          schema: evalSchema,
+          model: "gpt-4.1-mini",
+          temperature: 0.2
+        });
+
+        results.push({
+          agentId: a.agentId,
+          questionIndex: qIdx,
+          question: qaPair.question,
+          answer: qaPair.answer,
+          score: Number(out?.score ?? 3),
+          rationale: String(out?.rationale ?? "")
+        });
+
+        // Stream partial as we go
+        writeLine(res, { 
+          partial: { 
+            agentId: a.agentId, 
+            questionIndex: qIdx,
+            score: results.at(-1).score,
+            progress: `${results.length}/${qaPairs.length * agents.length}`
+          } 
+        });
+      }
     }
 
     writeLine(res, { initialEvaluations: results });

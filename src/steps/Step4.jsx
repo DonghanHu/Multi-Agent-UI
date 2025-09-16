@@ -143,6 +143,19 @@ export default function Step4({
     setP1(null);
     setP1Busy(true);
     setP1Log([]);
+// Count agents/questions and log
+  const numAgents = Array.isArray(agents) ? agents.length : 0;
+  const numQuestions = Array.isArray(qaPairs) ? qaPairs.length : 0;
+  const totalEvals = numAgents * numQuestions;
+
+  console.log(`[Phase 1] Questions to evaluate: ${numQuestions}`);
+  console.log(`[Phase 1] Agents: ${numAgents}`);
+  console.log(`[Phase 1] Total (agent × question) evaluations: ${totalEvals}`);
+
+
+
+
+
     pushP1({ type: "info", message: "Starting Phase 1… (running phase1Independent.txt per agent)" });
 
     try {
@@ -381,20 +394,28 @@ export default function Step4({
 
         {/* Per-agent result cards */}
         {effectivePhase1?.initialEvaluations?.length > 0 && (
-          <div className="grid" style={{ gap: 8, marginTop: 8 }}>
-            <strong className="muted-strong">Phase 1 Results</strong>
+          <div className="grid" style={{ gap: 8, marginTop: 8, maxWidth: "100%", overflow: "hidden" }}>
+            <strong className="muted-strong">Phase 1 Results ({effectivePhase1.initialEvaluations.length} total evaluations)</strong>
             {effectivePhase1.initialEvaluations.map((ev, i) => {
               const agent = agents.find(a => a.agentId === ev.agentId);
               return (
-                <div key={i} className="qa-item grid" style={{ gap: 6 }}>
+                <div key={i} className="qa-item grid" style={{ gap: 6, maxWidth: "100%", overflow: "hidden" }}>
                   <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline" }}>
-                    <div className="row" style={{ gap: 10, alignItems: "baseline" }}>
-                      <strong>{agent?.agentName || agent?.name || ev.agentId}</strong>
-                      <span className="muted mono">ID: {ev.agentId}</span>
+                    <div className="row" style={{ gap: 10, alignItems: "baseline", flex: 1, minWidth: 0 }}>
+                      <strong style={{ wordWrap: "break-word", overflowWrap: "break-word" }}>{agent?.agentName || agent?.name || ev.agentId}</strong>
+                      <span className="muted mono" style={{ wordWrap: "break-word", overflowWrap: "break-word" }}>Q{(ev.questionIndex ?? 0) + 1}</span>
                     </div>
                     <span className="pill">{ev.score}</span>
                   </div>
-                  <div className="muted">{ev.rationale}</div>
+                  
+                  {ev.question && (
+                    <div className="grid" style={{ gap: 4, background: "#f8f9fa", padding: "8px", borderRadius: "4px" }}>
+                      <div><strong>Question:</strong> <span style={{ wordWrap: "break-word", overflowWrap: "break-word" }}>{ev.question}</span></div>
+                      <div><strong>Answer:</strong> <span style={{ wordWrap: "break-word", overflowWrap: "break-word" }}>{ev.answer}</span></div>
+                    </div>
+                  )}
+                  
+                  <div className="muted" style={{ wordWrap: "break-word", overflowWrap: "break-word" }}><strong>Evaluation:</strong> {ev.rationale}</div>
                 </div>
               );
             })}
@@ -432,30 +453,32 @@ export default function Step4({
         </div>
 
         {effectivePhase2?.transcript?.length > 0 && (
-          <div className="grid" style={{ gap: 8 }}>
+          <div className="grid" style={{ gap: 8, maxWidth: "100%", overflow: "hidden" }}>
             <strong className="muted-strong">Transcript</strong>
             {effectivePhase2.transcript.map((t, i) => (
-              <div key={i} className="row" style={{ gap: 8 }}>
-                <span className="mono muted">Round {t.round}</span>
-                <span style={{ minWidth: 140, fontWeight: 600 }}>{t.speaker}</span>
-                <span>{t.text}</span>
+              <div key={i} className="row" style={{ gap: 8, maxWidth: "100%", overflow: "hidden" }}>
+                <span className="mono muted" style={{ flexShrink: 0 }}>Round {t.round}</span>
+                <span style={{ minWidth: 140, fontWeight: 600, flexShrink: 0, wordWrap: "break-word", overflowWrap: "break-word" }}>{t.speaker}</span>
+                <span style={{ flex: 1, minWidth: 0, wordWrap: "break-word", overflowWrap: "break-word" }}>{t.text}</span>
               </div>
             ))}
           </div>
         )}
 
         {effectivePhase2?.finalEvaluations?.length > 0 && (
-          <div className="grid" style={{ gap: 8 }}>
+          <div className="grid" style={{ gap: 8, maxWidth: "100%", overflow: "hidden" }}>
             <strong className="muted-strong">Final Evaluations</strong>
             {effectivePhase2.finalEvaluations.map((ev, i) => {
               const agent = agents.find(a => a.agentId === ev.agentId);
               return (
-                <div key={i} className="qa-item grid" style={{ gap: 6 }}>
-                  <div className="row" style={{ justifyContent: "space-between" }}>
-                    <strong>{agent?.agentName || agent?.name || ev.agentId}</strong>
-                    <span className="muted">Final Score: {ev.score}</span>
+                <div key={i} className="qa-item grid" style={{ gap: 6, maxWidth: "100%", overflow: "hidden" }}>
+                  <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline" }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <strong style={{ wordWrap: "break-word", overflowWrap: "break-word" }}>{agent?.agentName || agent?.name || ev.agentId}</strong>
+                    </div>
+                    <span className="muted" style={{ flexShrink: 0 }}>Final Score: {ev.score}</span>
                   </div>
-                  <div className="muted">{ev.rationale}</div>
+                  <div className="muted" style={{ wordWrap: "break-word", overflowWrap: "break-word" }}>{ev.rationale}</div>
                 </div>
               );
             })}
@@ -488,13 +511,13 @@ export default function Step4({
         </div>
 
         {effectivePhase3 && (
-          <div className="grid" style={{ gap: 8 }}>
-            <div className="qa-item grid" style={{ gap: 6 }}>
-              <div className="row" style={{ justifyContent: "space-between" }}>
+          <div className="grid" style={{ gap: 8, maxWidth: "100%", overflow: "hidden" }}>
+            <div className="qa-item grid" style={{ gap: 6, maxWidth: "100%", overflow: "hidden" }}>
+              <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline" }}>
                 <strong>Average Score</strong>
                 <span className="muted">{effectivePhase3.averageScore}</span>
               </div>
-              <div className="muted">{effectivePhase3.feedback}</div>
+              <div className="muted" style={{ wordWrap: "break-word", overflowWrap: "break-word" }}>{effectivePhase3.feedback}</div>
             </div>
           </div>
         )}

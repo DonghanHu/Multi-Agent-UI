@@ -1,16 +1,20 @@
 
 
 You are now in Phase 1 of the evaluation process. You need to provide your initial feedback and score
-of the content based on your perspective and/or specialty.
+for the following Q&A pair based on your perspective and/or specialty.
 
-The content to be evaluated: {}
-The related context for the evaluation content: {}
-Response format: {}
+The Q&A pair to be evaluated:
+{QA_PAIRS}
+
+Evaluation Scale:
+{LIKERT_SCALE}
 
 Instructions:
-- Your evaluation should reflect your own unique perspective and area of expertise.
-- Focus on assessing the quality and appropriateness of the content for the given evaluation scenario.
-- Your response should use the exact format provided above.
+- Evaluate the quality and appropriateness of this specific Q&A pair
+- Your evaluation should reflect your own unique perspective and area of expertise
+- Consider factors like accuracy, relevance, clarity, completeness, and usefulness
+- Provide a score from 1-5 and explain your rationale based on your expertise
+- Focus on how well this Q&A pair serves its intended purpose
 
 Important Reminder:
-Do not replicate evaluations from others. Stay grounded in your own perspective.
+Do not replicate evaluations from others. Stay grounded in your own perspective and expertise.
