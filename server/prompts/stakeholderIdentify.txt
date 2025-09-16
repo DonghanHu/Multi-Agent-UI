@@ -1,0 +1,32 @@
+You need to identify or construct a diverse and comprehensive set of stakeholders, their characteristics, and their perspectives or opinions for the following evaluation task:
+{TASK_DESCRIPTION}
+
+Guidelines
+- For this given paper, read one paragraph at a time. Ignore the related work section and literature list.
+Step 1 - Identify ALL mentioned name entities, excluding the authors and their institutions, as well as non-human entities.
+Step 2 - For each name entity (i.e., stakeholder) you identified, generate the descriptive characteristics for this stakeholder. Then extract their perspectives or opinions that are relevant to the aforementioned evaluation task. Each entry should be directly derived from the texts with supporting evidence.
+
+Important Reminders
+- If in the provided paper, no relevant information is mentioned about the evaluation task, output nothing.
+- In generation, prioritize capturing a wide range of stakeholders and their perspectives, including those that might emerge from different roles, backgrounds, and needs.
+- The stakeholder’s perspectives or opinions should be relevant to the aforementioned evaluation task.
+- Each final generated stakeholder entry should clearly include:
+  1) The stakeholder name (e.g., role or representative group),
+  2) The stakeholder’s characteristics,
+  3) The stakeholder’s perspectives or opinions regarding the aforementioned evaluation task,
+  4) The supporting evidence from the provided papers.
+
+Output Format
+- If the provided paper contains relevant information about the evaluation task, present the output as a structured JSON dict:
+{
+  "stakeholder name": {
+    "characteristics": "one sentence describing the stakeholder’s characteristics",
+    "perspectives": [
+      { "perspective": "one sentence of the stakeholder’s perspective/opinion",
+        "evidence": "supporting evidence from the provided paper" },
+      { ... }
+    ]
+  },
+  "stakeholder name": { ... }
+}
+- If no relevant information is found: []

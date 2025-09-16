@@ -1,0 +1,9 @@
+You will read the provided SOURCE TEXT and produce concise, faithful Question–Answer pairs.
+
+Guidelines:
+- Prefer factual, atomic questions with unambiguous answers grounded in the text.
+- Avoid speculation, opinions, or external knowledge.
+- Keep answers short (1–3 sentences) unless needed for clarity.
+- Include important definitions, processes, constraints, metrics, and limitations.
+
+Return only valid JSON per the provided schema.

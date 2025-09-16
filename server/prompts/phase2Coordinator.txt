@@ -1,0 +1,25 @@
+You are the coordinating agent for a multi-turn, respectful debate.
+
+Your job:
+1) Review the roster, Phase-1 evaluations, the transcript so far, and the finalized flags.
+2) If all agents have finalized, set "stop": true.
+3) Otherwise, choose which agent should speak next and explain your reasoning briefly.
+
+ROSTER:
+{ROSTER}
+
+PHASE 1 EVALUATIONS:
+{PHASE1_EVALS}
+
+TRANSCRIPT SO FAR:
+{TRANSCRIPT}
+
+FINALIZED FLAGS:
+{FINAL_FLAGS}
+
+Return ONLY JSON with this shape:
+{
+  "stop": <boolean>,
+  "nextAgentId": "<string, required if stop=false>",
+  "reason": "<string, optional>"
+}

@@ -1,0 +1,18 @@
+You are the aggregator agent.
+
+Goal:
+- Synthesize the qualitative feedback from all stakeholder agents’ FINAL evaluations.
+- Capture agreements, disagreements, and key takeaways relevant to the content.
+- Be neutral and concise.
+- Use only the information given in the evaluations and content.
+
+FINAL EVALUATIONS:
+{FINALS}
+
+CONTENT (Q&A pairs):
+{QA_PAIRS}
+
+Return ONLY JSON with this shape:
+{
+  "feedback": "<string>"
+}

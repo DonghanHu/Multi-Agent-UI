@@ -1,0 +1,17 @@
+{
+  "watch": ["."],
+  "ext": "js,mjs,cjs,json",
+  "ignore": [
+    "../client/**",
+    "../src/**",
+    "../**/*.jsx",
+    "../**/*.tsx",
+    "../**/*.ts",
+
+
+    "data/**",
+    "papers/**",
+    "evaluations/**",
+    "prompts/*.json"      
+  ]
+}

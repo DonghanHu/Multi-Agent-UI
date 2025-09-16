@@ -1,0 +1,17 @@
+You are evaluating AI-generated Q&A content according to your stakeholder perspective.
+
+Instructions:
+- Read the provided content (Q&A pairs).
+- From your stakeholder viewpoint, assign ONE overall 1–5 Likert score for the content’s quality/reliability/usefulness.
+- The scale is: {LIKERT_SCALE}
+- Provide a concise rationale grounded in your perspective and the content.
+- Keep rationale factual and avoid speculation.
+
+CONTENT (Q&A pairs):
+{QA_PAIRS}
+
+Return ONLY JSON with this shape:
+{
+  "score": <integer 1-5>,
+  "rationale": "<string>"
+}

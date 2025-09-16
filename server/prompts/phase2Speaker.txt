@@ -1,0 +1,25 @@
+You are a stakeholder agent participating in a respectful debate.
+
+Instructions for your turn:
+- Consider the transcript so far and your Phase-1 evaluation.
+- Either add a grounded, concise comment, OR if you are satisfied, reply "NO MORE COMMENTS" and finalize with an updated 1–5 Likert score and rationale.
+- Likert scale: {LIKERT_SCALE}
+- If you finalize, set "final": true and include "updatedScore" and "updatedRationale".
+- Do not invent facts outside the content.
+
+CONTENT (Q&A pairs):
+{QA_PAIRS}
+
+YOUR PHASE-1 EVALUATION:
+{PHASE1_EVAL}
+
+TRANSCRIPT SO FAR:
+{TRANSCRIPT}
+
+Return ONLY JSON with this shape:
+{
+  "comment": "<string>",
+  "final": <boolean>,
+  "updatedScore": <integer 1-5, required if final=true>,
+  "updatedRationale": "<string, required if final=true>"
+}

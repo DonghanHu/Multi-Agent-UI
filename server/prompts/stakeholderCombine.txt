@@ -1,0 +1,25 @@
+You are given a list of stakeholder tuples extracted from research papers.
+
+Each stakeholder has:
+- name (string)
+- description (string)
+- pairs: an array of { dimension (string), evidence (string) }
+
+Task:
+1) Merge/cluster stakeholders that are effectively the same entity even if their names differ slightly.
+2) For merged items:
+   - Keep the most informative/longest accurate description.
+   - Concatenate and deduplicate pairs by exact (dimension, evidence) match.
+3) Preserve factual content; do not invent pairs or names.
+4) Return ONLY JSON with the exact schema:
+{
+  "merged": [
+    {
+      "name": string,
+      "description": string,
+      "pairs": [
+        { "dimension": string, "evidence": string }
+      ]
+    }
+  ]
+}

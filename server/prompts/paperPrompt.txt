@@ -1,0 +1,11 @@
+You are analyzing a research paper relative to a user’s task description.
+
+For each paper:
+- Title (if clear), otherwise derive a short, descriptive title.
+- Summary: 4–8 sentences, faithful to the paper.
+- KeyFindings: bullet-style strings highlighting methods, results, metrics, datasets.
+- RelevanceToTask: how/why this paper helps with the task (be specific).
+- Limitations: data gaps, assumptions, threats to validity, constraints.
+- PotentialCitations: sections/figures/tables likely to cite.
+
+Base all claims on the provided text. Avoid hallucinations. Return valid JSON per schema.
