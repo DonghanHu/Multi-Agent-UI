@@ -1,15 +1,15 @@
-// src/steps/Step3.jsx
-import React from "react";
+import React, { useState } from "react";
 
 export default function Step3({
   task,
   paperResults,
   personasResults, setPersonasResults,
   personasBusy,
-  // (buildAgents / runInitialEvaluation intentionally not used here anymore)
   generatePersonas, savePersonas,
   onUnlockStep4
 }) {
+  const [finalizeBusy, setFinalizeBusy] = useState(false);
+
   function updatePersonasResults(updater) {
     setPersonasResults(prev => {
       const copy = JSON.parse(JSON.stringify(prev));
@@ -18,20 +18,52 @@ export default function Step3({
     });
   }
 
+  async function finalizeAndSaveAll() {
+    if (!Array.isArray(personasResults) || personasResults.length === 0) {
+      alert("No personas to save. Generate personas first.");
+      return;
+    }
+    try {
+      setFinalizeBusy(true);
+      // Save each personas file one by one using your existing savePersonas(idx)
+      for (let i = 0; i < personasResults.length; i++) {
+        await savePersonas(i);
+      }
+      // Only unlock Step 4 after successful saves
+      onUnlockStep4();
+    } catch (e) {
+      // savePersonas already alerts on error; keep a guard here as well
+      console.error(e);
+      alert(e?.message || "Failed to finalize & save personas.");
+    } finally {
+      setFinalizeBusy(false);
+    }
+  }
+
   return (
     <div className="card grid" style={{ gap: 16 }}>
       <h2>Step 3 — Personas</h2>
       <p className="muted">
         Generate personas (five key attributes) from stakeholder tuples.
-        When done, click <em>Finalize &amp; Save</em> to unlock Step 4.
+        When done, click <em>Finalize &amp; Save</em> to persist personas and unlock Step 4.
       </p>
 
       {/* Personas controls */}
       <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-        <button className="btn" onClick={generatePersonas} disabled={personasBusy}>
+        <button className="btn" onClick={generatePersonas} disabled={personasBusy || finalizeBusy}>
           {personasBusy ? "Generating Personas…" : "Generate Personas (from Stakeholders)"}
         </button>
         {!!personasResults.length && <span className="pill">Personas ready</span>}
+        {!!personasResults.length && (
+          <button
+            className="btn"
+            onClick={finalizeAndSaveAll}
+            disabled={finalizeBusy || personasBusy}
+            title="Save all persona files and unlock Step 4"
+          >
+            {finalizeBusy ? "Finalizing & Saving…" : "Finalize & Save (unlock Step 4)"}
+          </button>
+        )}
       </div>
 
       {/* Personas editor */}
@@ -46,9 +78,13 @@ export default function Step3({
                   <span className="muted mono" style={{ marginLeft: 8 }}>{paper.filename}</span>
                 </div>
                 <div className="row" style={{ gap: 8 }}>
-                  <button className="btn secondary" onClick={() => savePersonas(pIdx)}>Save JSON</button>
-                  {/* Unlock Step 4 explicitly */}
-                  <button className="btn" onClick={onUnlockStep4}>Finalize &amp; Save (unlock Step 4)</button>
+                  <button
+                    className="btn secondary"
+                    onClick={() => savePersonas(pIdx)}
+                    disabled={finalizeBusy || personasBusy}
+                  >
+                    Save JSON
+                  </button>
                 </div>
               </div>
 
@@ -70,6 +106,7 @@ export default function Step3({
                           });
                         });
                       }}
+                      disabled={finalizeBusy || personasBusy}
                     >
                       + Add Persona
                     </button>
@@ -87,6 +124,7 @@ export default function Step3({
                               copy[pIdx].data[stakeholderName].splice(i, 1);
                             });
                           }}
+                          disabled={finalizeBusy || personasBusy}
                         >✕</button>
                       </div>
 
@@ -99,6 +137,7 @@ export default function Step3({
                             copy[pIdx].data[stakeholderName][i].personaName = e.target.value;
                           });
                         }}
+                        disabled={finalizeBusy || personasBusy}
                       />
 
                       <textarea
@@ -109,6 +148,7 @@ export default function Step3({
                             copy[pIdx].data[stakeholderName][i].demographicInformation = e.target.value;
                           });
                         }}
+                        disabled={finalizeBusy || personasBusy}
                       />
 
                       <textarea
@@ -119,6 +159,7 @@ export default function Step3({
                             copy[pIdx].data[stakeholderName][i].perspective = e.target.value;
                           });
                         }}
+                        disabled={finalizeBusy || personasBusy}
                       />
 
                       <input
@@ -130,6 +171,7 @@ export default function Step3({
                             copy[pIdx].data[stakeholderName][i].specialty = e.target.value;
                           });
                         }}
+                        disabled={finalizeBusy || personasBusy}
                       />
 
                       <input
@@ -141,6 +183,7 @@ export default function Step3({
                             copy[pIdx].data[stakeholderName][i].psychologicalTraits = e.target.value;
                           });
                         }}
+                        disabled={finalizeBusy || personasBusy}
                       />
 
                       <textarea
@@ -151,6 +194,7 @@ export default function Step3({
                             copy[pIdx].data[stakeholderName][i].socialRelationships = e.target.value;
                           });
                         }}
+                        disabled={finalizeBusy || personasBusy}
                       />
                     </div>
                   ))}

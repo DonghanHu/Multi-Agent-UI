@@ -1,5 +1,5 @@
 // src/steps/Step4.jsx
-import React, { useMemo, useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 
 /** Utility to download JSON blobs */
 function downloadJSON(filename, data) {
@@ -56,12 +56,14 @@ export default function Step4({
   paperResults,
   personasResults,
   agentsFile, agents,
+  setAgentsFile, setAgents,
   evalFile, evaluations, // legacy
 
   // optional external handlers + states (if you already wired in App.jsx; otherwise we self-manage)
   phase1, phase1Busy, onRunPhase1,
   phase2, phase2Busy, onRunPhase2,
-  phase3, phase3Busy, onRunPhase3
+  phase3, phase3Busy, onRunPhase3,
+  task
 }) {
   // Local fallbacks if parent didn’t supply states/handlers
   const [p1Busy, setP1Busy] = useState(false);
@@ -88,6 +90,41 @@ export default function Step4({
   const effectiveP1Busy = (typeof phase1Busy === "boolean" ? phase1Busy : p1Busy);
   const effectiveP2Busy = (typeof phase2Busy === "boolean" ? phase2Busy : p2Busy);
   const effectiveP3Busy = (typeof phase3Busy === "boolean" ? phase3Busy : p3Busy);
+
+  const [creatingAgents, setCreatingAgents] = useState(false);
+
+  async function handleGenerateAgents() {
+    if (!Array.isArray(personasResults) || personasResults.length === 0) {
+      alert("No personas available. Finish Step 3 first.");
+      return;
+    }
+    try {
+      setCreatingAgents(true);
+      console.log("[UI] Generate Agents clicked. Currently disabled? ", creatingAgents);
+      console.log("[UI] personasResults length: ", personasResults.length);
+
+      const resp = await fetch("/api/agents/generate_from_personas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          personasResults,
+          taskDescription: task || ""
+        })
+      });
+      if (!resp.ok) {
+        const e = await resp.json().catch(() => ({}));
+        throw new Error(e?.error || `HTTP ${resp.status}`);
+      }
+      const data = await resp.json();
+      if (typeof setAgents === "function") setAgents(data.agents || []);
+      if (typeof setAgentsFile === "function") setAgentsFile(data.filename || "");
+    } catch (e) {
+      console.error(e);
+      alert(e.message || "Failed to generate agents.");
+    } finally {
+      setCreatingAgents(false);
+    }
+  }
 
   // Helpers to append log lines + autoscroll
   function pushP1(msg) {
@@ -138,7 +175,7 @@ export default function Step4({
   };
 
   const runPhase2Default = async () => {
-    if (!effectivePhase1?.initialEvaluations?.length) {
+    if (!(effectivePhase1?.initialEvaluations?.length > 0)) {
       pushP2({ type: "warn", message: "Phase 1 results required." });
       return;
     }
@@ -178,7 +215,7 @@ export default function Step4({
   };
 
   const runPhase3Default = async () => {
-    if (!effectivePhase2?.finalEvaluations?.length) {
+    if (!(effectivePhase2?.finalEvaluations?.length > 0)) {
       pushP3({ type: "warn", message: "Phase 2 results required." });
       return;
     }
@@ -216,15 +253,14 @@ export default function Step4({
 
   // Trigger wrappers: prefer external handler if provided, otherwise default
   const onPhase1Click = async () => {
+    const disabled =
+      effectiveP1Busy || !(agents?.length > 0) || !(qaPairs?.length > 0);
     console.log(">>> [Run Phase 1 button clicked] (Step4.jsx)");
-    console.log("    agents.length:", agents.length);
-    console.log("    qaPairs.length:", qaPairs.length);
-    console.log("    effectiveP1Busy:", effectiveP1Busy);
-    console.log(onRunPhase1 ? "    Using external onRunPhase1 handler" : "    Using runPhase1Default");
-    
+    console.log("    Agents length:", agents?.length ?? 0);
+    console.log("    Button disabled?", disabled);
+    console.log(onRunPhase1 ? "    Using external onRunPhase1 handler" : "    Using internal runPhase1Default");
     if (onRunPhase1) return onRunPhase1();
     return runPhase1Default();
-    // (if you want to pipe external streaming logs into p1Log, have your handler call a callback you pass in)
   };
   const onPhase2Click = async () => {
     if (onRunPhase2) return onRunPhase2();
@@ -238,23 +274,60 @@ export default function Step4({
   return (
     <div className="card grid" style={{ gap: 18 }}>
       <h2>Step 4 — Three-Phase Stakeholder Debate</h2>
-      <p className="">
-        Run Phase 1 (independent evaluations), Phase 2 (coordinated debate), and Phase 3 (aggregation).
+      <p className="muted">
+        First, generate agents (one per persona) using the button below. Then, run Phase 1 (independent evaluations), Phase 2 (multi-turn debate), and Phase 3 (aggregation) in order. Each phase builds on the results of the previous step.
       </p>
+
+      {/* Generate Agents */}
+      <section className="grid" style={{ gap: 10 }}>
+        <h3>Prepare Agents</h3>
+        <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <button
+            className={`btn ${creatingAgents ? "success" : ""}`}
+            onClick={handleGenerateAgents}
+            disabled={creatingAgents || !(personasResults?.length > 0)}
+            title={!(personasResults?.length > 0) ? "No personas yet" : ""}
+          >
+            {creatingAgents ? "Creating…" : "Generate Agents"}
+          </button>
+          {agentsFile && <span className="muted mono">Saved: {agentsFile}</span>}
+        </div>
+
+        {!!(agents?.length) && (
+          <div className="grid" style={{ gap: 8 }}>
+            <strong className="muted-strong">Agents ({agents.length})</strong>
+            {agents.map((a) => (
+              <div key={a.agentId} className="qa-item grid" style={{ gap: 6 }}>
+                <div className="row" style={{ justifyContent: "space-between" }}>
+                  <strong>{a.name}</strong>
+                  <span className="muted mono">{a.fromFile}</span>
+                </div>
+                <div className="muted">
+                  <div><b>Stakeholder:</b> {a.stakeholder}</div>
+                  <div><b>Perspective:</b> {a?.persona?.perspective}</div>
+                  <div><b>Specialty:</b> {a?.persona?.specialty}</div>
+                </div>
+                <textarea readOnly value={a.instantiationPrompt || ""} />
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <hr />
 
       {/* PHASE 1 */}
       <section className="grid" style={{ gap: 10 }}>
         <h3>Phase 1 — Independent Evaluations</h3>
         <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          {/* Debug info */}
-          <div style={{ fontSize: '12px', color: 'red', marginBottom: '8px' }}>
-            DEBUG: agents.length={agents.length}, qaPairs.length={qaPairs.length}, busy={effectiveP1Busy}
-          </div>
           <button
             className={`btn ${effectiveP1Busy ? "running" : ""}`}
             onClick={onPhase1Click}
-            disabled={effectiveP1Busy || !agents.length || !qaPairs.length}
-            title={!agents.length ? "Build agents first" : !qaPairs.length ? "Complete Step 1 first" : ""}
+            disabled={effectiveP1Busy || !(agents?.length > 0) || !(qaPairs?.length > 0)}
+            title={
+              !(agents?.length > 0) ? "Build agents first" :
+              !(qaPairs?.length > 0) ? "Complete Step 1 first" : ""
+            }
           >
             {effectiveP1Busy ? "Running Phase 1…" : "Run Phase 1"}
           </button>
@@ -297,8 +370,13 @@ export default function Step4({
           <button
             className={`btn ${effectiveP2Busy ? "running" : ""}`}
             onClick={onPhase2Click}
-            disabled={effectiveP2Busy || !agents.length || !qaPairs.length || !effectivePhase1?.initialEvaluations?.length}
-            title={!effectivePhase1?.initialEvaluations?.length ? "Run Phase 1 first" : ""}
+            disabled={
+              effectiveP2Busy ||
+              !(agents?.length > 0) ||
+              !(qaPairs?.length > 0) ||
+              !(effectivePhase1?.initialEvaluations?.length > 0)
+            }
+            title={!(effectivePhase1?.initialEvaluations?.length > 0) ? "Run Phase 1 first" : ""}
           >
             {effectiveP2Busy ? "Running Phase 2…" : "Start Debate"}
           </button>
@@ -353,8 +431,8 @@ export default function Step4({
           <button
             className={`btn ${effectiveP3Busy ? "running" : ""}`}
             onClick={onPhase3Click}
-            disabled={effectiveP3Busy || !effectivePhase2?.finalEvaluations?.length}
-            title={!effectivePhase2?.finalEvaluations?.length ? "Run Phase 2 first" : ""}
+            disabled={effectiveP3Busy || !(effectivePhase2?.finalEvaluations?.length > 0)}
+            title={!(effectivePhase2?.finalEvaluations?.length > 0) ? "Run Phase 2 first" : ""}
           >
             {effectiveP3Busy ? "Running Phase 3…" : "Aggregate Results"}
           </button>
@@ -400,7 +478,7 @@ export default function Step4({
           </button>
         </div>
 
-        {!!personasResults.length && (
+        {!!(personasResults?.length) && (
           <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
             <strong>Personas</strong>
             <button className="btn secondary" onClick={() => downloadJSON("personas.json", personasResults)}>
@@ -409,7 +487,7 @@ export default function Step4({
           </div>
         )}
 
-        {!!agents.length && (
+        {!!(agents?.length) && (
           <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
             <strong>Agents</strong>
             <div className="row" style={{ gap: 8 }}>
@@ -421,7 +499,7 @@ export default function Step4({
           </div>
         )}
 
-        {!!evaluations.length && (
+        {!!(evaluations?.length) && (
           <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
             <strong>Initial Evaluation Results</strong>
             <div className="row" style={{ gap: 8 }}>

@@ -218,7 +218,8 @@ export default function App() {
     try {
       const r = personasResults[idx];
       const payload = { filename: r.filename, data: r.data };
-      const { data } = await axios.post("/api/papers/save", payload);
+      const { data } = await axios.post("/api/personas/save", payload);
+      //const { data } = await axios.post("/api/papers/save", payload);
       alert("Saved: " + data.savedAs);
       // Unlock Step 4 on successful save
       setStep4Unlocked(true);
@@ -352,26 +353,40 @@ export default function App() {
       )}
 
       {step === 4 && (
-        <Step4
-          qaFilename={qaFilename}
-          qaPairs={qaPairs}
-          paperResults={paperResults}
-          personasResults={personasResults}
-          agentsFile={agentsFile}
-          agents={agents}
-          evalFile={evalFile}
-          evaluations={evaluations}
-          phase1={phase1}
-          phase1Busy={phase1Busy}
-          onRunPhase1={onRunPhase1}
-          phase2={phase2}
-          phase2Busy={phase2Busy}
-          onRunPhase2={onRunPhase2}
-          phase3={phase3}
-          phase3Busy={phase3Busy}
-          onRunPhase3={onRunPhase3}
-        />
-      )}
+  <Step4
+    // qaFilename={qaFilename}
+    // qaPairs={qaPairs}
+    // paperResults={paperResults}
+    // personasResults={personasResults}
+    // agentsFile={agentsFile}
+    // agents={agents}
+    // setAgents={setAgents}
+    // setAgentsFile={setAgentsFile}
+    // task={task}
+
+    // evalFile={evalFile}
+    // evaluations={evaluations}
+    // phase1={phase1}
+    // phase1Busy={phase1Busy}
+    // onRunPhase1={onRunPhase1}
+    // phase2={phase2}
+    // phase2Busy={phase2Busy}
+    // onRunPhase2={onRunPhase2}
+    // phase3={phase3}
+    // phase3Busy={phase3Busy}
+    // onRunPhase3={onRunPhase3}
+    qaFilename={qaFilename}
+    qaPairs={qaPairs}
+    paperResults={paperResults}
+    personasResults={personasResults}
+    agentsFile={agentsFile}
+    agents={agents}
+    setAgents={setAgents}
+    setAgentsFile={setAgentsFile}
+    task={task}
+  />
+)}
+
     </div>
   );
 }

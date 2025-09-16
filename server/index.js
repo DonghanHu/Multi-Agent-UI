@@ -30,11 +30,16 @@ const DATA_DIR = path.join(__dirname, "data");
 const PAPERS_DIR = path.join(DATA_DIR, "papers");
 const EVALS_DIR = path.join(DATA_DIR, "evaluations");
 const PROMPTS_DIR = path.join(__dirname, "prompts");
+const AGENTS_DIR = path.join(DATA_DIR, "agents");
+const PERSONAS_DIR = path.join(DATA_DIR, "persona");
+
 
 await fs.ensureDir(DATA_DIR);
 await fs.ensureDir(PAPERS_DIR);
 await fs.ensureDir(EVALS_DIR);
 await fs.ensureDir(PROMPTS_DIR);
+await fs.ensureDir(AGENTS_DIR);
+await fs.ensureDir(PERSONAS_DIR);
 
 // ---------- Utilities ----------
 function nowStamp() {
@@ -557,7 +562,9 @@ app.post("/api/personas/generate", async (req, res) => {
 
 
       const outName = `${baseName}-personas-${nowStamp()}.json`;
-      await fs.writeJson(path.join(PAPERS_DIR, outName), personaOut, { spaces: 2 });
+      // await fs.writeJson(path.join(PAPERS_DIR, outName), personaOut, { spaces: 2 });
+
+      await fs.writeJson(path.join(PERSONAS_DIR, outName), personaOut, { spaces: 2 });
 
       results.push({ file: p.file, filename: outName, data: personaOut });
     }
@@ -566,6 +573,18 @@ app.post("/api/personas/generate", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message || "Failed to generate personas." });
+  }
+});
+
+// Save edited personas (Step 3 "Save JSON")
+app.post("/api/personas/save", async (req, res) => {
+  try {
+    const { filename, data } = req.body;
+    if (!filename) return res.status(400).json({ error: "filename is required" });
+    await fs.writeJson(path.join(PERSONAS_DIR, filename), data, { spaces: 2 });
+    res.json({ savedAs: filename });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -672,6 +691,89 @@ app.post("/api/agents/evaluate", async (req, res) => {
     res.status(500).json({ error: err.message || "Failed to evaluate Q&A." });
   }
 });
+
+
+// multi-agents
+// ======================================================================
+// Generate Agents from Personas (Table 13 prompt)
+// Body: { personasResults: [{ file, filename, data: { [stakeholderName]: [ personaObj ] } }], taskDescription?: string }
+// Returns: { filename, agents: [ { agentId, name, stakeholder, fromFile, persona, instantiationPrompt } ] }
+// ======================================================================
+app.post("/api/agents/generate_from_personas", async (req, res) => {
+  try {
+    console.log("[/api/agents/generate_from_personas] called");
+    const { personasResults = [], taskDescription = "" } = req.body || {};
+    if (!Array.isArray(personasResults) || personasResults.length === 0) {
+      return res.status(400).json({ error: "personasResults (non-empty array) is required" });
+    }
+
+    // load Table 13 exact prompt text
+    let tmpl;
+    try {
+      tmpl = await readPrompt("agentInstantiate.txt"); // put Table 13 text here verbatim
+    } catch (e) {
+      console.error(e);
+      return res.status(500).json({ error: "Missing prompt: server/prompts/agentInstantiate.txt" });
+    }
+
+    // Utility to create a safe, short agent id
+    const makeId = (s) =>
+      ("agent_" + s.toLowerCase().replace(/[^a-z0-9]+/g, "_"))
+        .replace(/^_+|_+$/g, "")
+        .slice(0, 60);
+
+    const agents = [];
+    let seq = 1;
+
+    for (const paper of personasResults) {
+      const fromFile = paper?.filename || paper?.file || "unknown";
+      const data = paper?.data || {};
+      for (const [stakeholder, arr] of Object.entries(data)) {
+        const persona = Array.isArray(arr) && arr[0] ? arr[0] : null;
+        if (!persona) continue;
+
+        // Build instantiation prompt from template (Table 13)
+        // Use simple curly replacements; keep the template EXACT otherwise.
+        const instantiationPrompt = tmpl
+          .replaceAll("{STAKEHOLDER_NAME}", stakeholder)
+          .replaceAll("{TASK_DESCRIPTION}", taskDescription || "(no task provided)")
+          .replaceAll("{PERSONA_JSON}", JSON.stringify(persona, null, 2));
+
+        const displayName =
+          persona.personaName?.trim() ||
+          `${stakeholder} Persona`;
+
+        const agent = {
+          agentId: `${makeId(displayName)}_${seq++}`,
+          name: displayName,
+          stakeholder,
+          fromFile,
+          persona,                    // keep full persona object
+          instantiationPrompt         // prompt text shown in Step 4
+        };
+
+        agents.push(agent);
+      }
+    }
+
+    if (agents.length === 0) {
+      return res.status(400).json({ error: "No agents could be generated from personasResults." });
+    }
+
+    const outName = `agents-${nowStamp()}.json`;
+    const outPath = path.join(AGENTS_DIR, outName);
+    await fs.writeJson(outPath, { agents }, { spaces: 2 });
+
+    console.log(`[agents] saved ${agents.length} → ${outPath}`);
+    res.json({ filename: outName, agents });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message || "Failed to generate agents from personas." });
+  }
+});
+
+
+
 
 // ======================================================================
 // STEP 4 — Three-Phase Debate (Phase 1 → Phase 2 → Phase 3)

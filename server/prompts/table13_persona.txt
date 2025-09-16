@@ -1,0 +1,42 @@
+You need to create stakeholder personas for the following evaluation task:
+**{Task Description}***
+
+Guidelines
+- For the provided stakeholder perspective list, process one stakeholder at a time.
+- For each mentioned perspective of the stakeholder, generate a distinct persona that embodies the
+corresponding perspective.
+- Following the steps below, each generated persona must include these attributes:
+1. Generate the persona’s demographic information based on name, age, education, career,
+personality traits, hobbies, etc.
+2. Rephrase the stakeholder perspective to match the persona.
+3. Generate a specialty aligned with the persona’s profile and relevant to the evaluation task.
+4. Generate psychological traits describing personality, emotions, and cognitive tendencies.
+5. Generate the persona’s social relationships that reflect connections within the stakeholder
+types.
+
+Important Reminders
+- Personas should be diverse, realistic, and grounded in the stakeholder profile.
+- Each distinct perspective must map to a unique persona.
+
+Stakeholder Perspective List
+{Identified Stakeholder Perspectives}
+
+Output Format (as JSON structure):
+{
+"Stakeholder Name": [
+{
+"Name": "Full name of the persona",
+"Demographic Information": "One to two sentences describing the persona’s
+demographic profile.",
+"Perspective": "One to two sentences outlining the persona’s perspective.",
+"Specialty": "One to two sentences describing the persona’s skill or expertise.",
+"Psychological Traits": "One to two sentences describing personality, emotions,
+etc.",
+"Social Relationships": "One to two sentences describing interactions with other
+stakeholders."
+},
+{ ... }
+],
+"Another Stakeholder Name": [ ... ]
+
+}
