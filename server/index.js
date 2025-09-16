@@ -699,78 +699,6 @@ app.post("/api/agents/evaluate", async (req, res) => {
 // Body: { personasResults: [{ file, filename, data: { [stakeholderName]: [ personaObj ] } }], taskDescription?: string }
 // Returns: { filename, agents: [ { agentId, name, stakeholder, fromFile, persona, instantiationPrompt } ] }
 // ======================================================================
-app.post("/api/agents/generate_from_personas", async (req, res) => {
-  try {
-    console.log("[/api/agents/generate_from_personas] called");
-    const { personasResults = [], taskDescription = "" } = req.body || {};
-    if (!Array.isArray(personasResults) || personasResults.length === 0) {
-      return res.status(400).json({ error: "personasResults (non-empty array) is required" });
-    }
-
-    // load Table 13 exact prompt text
-    let tmpl;
-    try {
-      tmpl = await readPrompt("agentInstantiate.txt"); // put Table 13 text here verbatim
-    } catch (e) {
-      console.error(e);
-      return res.status(500).json({ error: "Missing prompt: server/prompts/agentInstantiate.txt" });
-    }
-
-    // Utility to create a safe, short agent id
-    const makeId = (s) =>
-      ("agent_" + s.toLowerCase().replace(/[^a-z0-9]+/g, "_"))
-        .replace(/^_+|_+$/g, "")
-        .slice(0, 60);
-
-    const agents = [];
-    let seq = 1;
-
-    for (const paper of personasResults) {
-      const fromFile = paper?.filename || paper?.file || "unknown";
-      const data = paper?.data || {};
-      for (const [stakeholder, arr] of Object.entries(data)) {
-        const persona = Array.isArray(arr) && arr[0] ? arr[0] : null;
-        if (!persona) continue;
-
-        // Build instantiation prompt from template (Table 13)
-        // Use simple curly replacements; keep the template EXACT otherwise.
-        const instantiationPrompt = tmpl
-          .replaceAll("{STAKEHOLDER_NAME}", stakeholder)
-          .replaceAll("{TASK_DESCRIPTION}", taskDescription || "(no task provided)")
-          .replaceAll("{PERSONA_JSON}", JSON.stringify(persona, null, 2));
-
-        const displayName =
-          persona.personaName?.trim() ||
-          `${stakeholder} Persona`;
-
-        const agent = {
-          agentId: `${makeId(displayName)}_${seq++}`,
-          name: displayName,
-          stakeholder,
-          fromFile,
-          persona,                    // keep full persona object
-          instantiationPrompt         // prompt text shown in Step 4
-        };
-
-        agents.push(agent);
-      }
-    }
-
-    if (agents.length === 0) {
-      return res.status(400).json({ error: "No agents could be generated from personasResults." });
-    }
-
-    const outName = `agents-${nowStamp()}.json`;
-    const outPath = path.join(AGENTS_DIR, outName);
-    await fs.writeJson(outPath, { agents }, { spaces: 2 });
-
-    console.log(`[agents] saved ${agents.length} → ${outPath}`);
-    res.json({ filename: outName, agents });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message || "Failed to generate agents from personas." });
-  }
-});
 
 
 
@@ -1101,8 +1029,143 @@ app.post("/api/debate/phase3", async (req, res) => {
   }
 });
 
+// ======================================================================
+// STEP 4 — Generate Agents from Personas using table14_instantiate.txt
+// ======================================================================
+app.post("/api/agents/generate_from_personas", async (req, res) => {
+  try {
+    const { personasResults = [], taskDescription = "" } = req.body || {};
+    
+    console.log(`[API] =============== GENERATE AGENTS DEBUG ===============`);
+    console.log(`[API] Received personasResults:`, JSON.stringify(personasResults, null, 2));
+    console.log(`[API] Task Description:`, taskDescription);
+    console.log(`[API] USE_MOCK:`, USE_MOCK);
+    
+    if (!personasResults.length) {
+      return res.status(400).json({ error: "No personas provided." });
+    }
 
+    console.log(`[API] Generating agents from ${personasResults.length} persona files`);
 
+    if (USE_MOCK) {
+      console.log("[API] Using MOCK mode for agent generation");
+      const mockAgents = personasResults.flatMap((paper, paperIdx) => 
+        Object.entries(paper.data || {}).flatMap(([stakeholderName, personas], stakeholderIdx) =>
+          (personas || []).map((persona, personaIdx) => ({
+            agentId: `agent_${paperIdx}_${stakeholderIdx}_${personaIdx}`,
+            agentName: persona.personaName || `Agent ${paperIdx}-${stakeholderIdx}-${personaIdx}`,
+            stakeholder: stakeholderName,
+            fromFile: paper.file,
+            persona: persona,
+            demographicInformation: persona.demographicInformation || "",
+            perspective: persona.perspective || "",
+            specialty: persona.specialty || "",
+            psychologicalTraits: persona.psychologicalTraits || "",
+            socialRelationships: persona.socialRelationships || "",
+            instantiationPrompt: `MOCK AGENT: ${persona.personaName} from ${stakeholderName}`
+          }))
+        )
+      );
+      
+      const filename = `agents-generated-${nowStamp()}.json`;
+      await fs.writeJson(path.join(EVALS_DIR, filename), { agents: mockAgents }, { spaces: 2 });
+      
+      return res.json({ 
+        agents: mockAgents, 
+        filename,
+        count: mockAgents.length 
+      });
+    }
+
+    if (!createStructuredJSON) {
+      return res.status(500).json({ error: "OpenAI client not initialized" });
+    }
+
+    // Read the table14_instantiate.txt prompt template
+    let instantiateTemplate;
+    try {
+      instantiateTemplate = await readPrompt("table14_instantiate.txt");
+      console.log(`[API] Successfully loaded table14_instantiate.txt template (${instantiateTemplate.length} chars)`);
+      console.log(`[API] Template preview: ${instantiateTemplate.substring(0, 200)}...`);
+    } catch (e) {
+      console.error("[API] Error reading table14_instantiate.txt:", e);
+      return res.status(500).json({ error: "Missing prompt: server/prompts/table14_instantiate.txt" });
+    }
+
+    const agents = [];
+    
+    // Process each paper's personas
+    for (const paper of personasResults) {
+      const paperFile = paper.file || "unknown.pdf";
+      console.log(`[API] Processing paper: ${paperFile}`);
+      
+      // Process each stakeholder's personas
+      for (const [stakeholderName, personas] of Object.entries(paper.data || {})) {
+        console.log(`[API] Processing stakeholder: ${stakeholderName} (${(personas || []).length} personas)`);
+        
+        // Process each persona
+        for (let i = 0; i < (personas || []).length; i++) {
+          const persona = personas[i];
+          const agentId = `agent_${paper.filename || paperFile}_${stakeholderName}_${i}`.replace(/[^a-zA-Z0-9_]/g, '_');
+          
+          // Fill in the template with persona data
+          console.log(`[API] Processing agent: ${persona.personaName} from ${stakeholderName}`);
+          
+          const instantiatedPrompt = instantiateTemplate
+            .replace('{agent_name}', persona.personaName || `Agent ${i + 1}`)
+            .replace(/\{\}/g, (match, offset) => {
+              const beforeMatch = instantiateTemplate.substring(0, offset);
+              const lineStart = beforeMatch.lastIndexOf('\n') + 1;
+              const currentLine = instantiateTemplate.substring(lineStart, offset + 2);
+              
+              if (currentLine.includes('demographic information')) return persona.demographicInformation || '';
+              if (currentLine.includes('perspective')) return persona.perspective || '';
+              if (currentLine.includes('specialty')) return persona.specialty || '';
+              if (currentLine.includes('psychological traits')) return persona.psychologicalTraits || '';
+              if (currentLine.includes('relationships')) return persona.socialRelationships || '';
+              if (currentLine.includes('Task Description')) return taskDescription || 'No task provided';
+              if (currentLine.includes('content to be evaluated')) return '[Content will be provided during evaluation]';
+              if (currentLine.includes('context for the evaluation')) return '[Context will be provided during evaluation]';
+              if (currentLine.includes('format for your evaluation')) return '[Format will be specified during evaluation]';
+              
+              return '[To be filled during evaluation]';
+            });
+
+          console.log(`[API] Generated prompt preview for ${persona.personaName}: ${instantiatedPrompt.substring(0, 150)}...`);
+
+          agents.push({
+            agentId,
+            agentName: persona.personaName || `Agent ${i + 1}`,
+            stakeholder: stakeholderName,
+            fromFile: paperFile,
+            persona: persona,
+            demographicInformation: persona.demographicInformation || "",
+            perspective: persona.perspective || "",
+            specialty: persona.specialty || "",
+            psychologicalTraits: persona.psychologicalTraits || "",
+            socialRelationships: persona.socialRelationships || "",
+            instantiationPrompt: instantiatedPrompt
+          });
+        }
+      }
+    }
+
+    console.log(`[API] Generated ${agents.length} agents total`);
+    
+    // Save to evaluations directory
+    const filename = `agents-generated-${nowStamp()}.json`;
+    await fs.writeJson(path.join(EVALS_DIR, filename), { agents, taskDescription }, { spaces: 2 });
+    
+    res.json({ 
+      agents, 
+      filename,
+      count: agents.length 
+    });
+  } catch (err) {
+    console.error("Error generating agents from personas:", err);
+    res.status(500).json({ error: err.message || "Failed to generate agents from personas." });
+  }
+});
 
 // ---------- Start ----------
 const port = process.env.PORT || 3001;

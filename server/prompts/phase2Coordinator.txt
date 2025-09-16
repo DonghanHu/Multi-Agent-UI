@@ -1,25 +1,21 @@
-You are the coordinating agent for a multi-turn, respectful debate.
 
-Your job:
-1) Review the roster, Phase-1 evaluations, the transcript so far, and the finalized flags.
-2) If all agents have finalized, set "stop": true.
-3) Otherwise, choose which agent should speak next and explain your reasoning briefly.
+1. Debate Start:
+You are now entering Phase 2 of the evaluation process, where you need to participate in a debate
+process with other stakeholders like you.
 
-ROSTER:
-{ROSTER}
+Here are the initial evaluations from all stakeholders: {phase 1 evaluations}
+Your task is to evaluate these initial assessments based on your perspective and/or specialty.
+You should also reflect on the feedback from other stakeholders and decide whether to agree, disagree,
+or add nuances to the discussion based on your perspective and/or specialty.
 
-PHASE 1 EVALUATIONS:
-{PHASE1_EVALS}
+2. During Debate:
+Now, it’s your turn to speak. Based on all previous feedback from the debates and your reflection, you
+can decide whether to agree, disagree, or add nuances to the discussion based on your perspective
+and/or specialty.
 
-TRANSCRIPT SO FAR:
-{TRANSCRIPT}
+If you have no more points to discuss, respond with "NO MORE COMMENTS" followed by your final
+evaluation in this format: {response format}
 
-FINALIZED FLAGS:
-{FINAL_FLAGS}
-
-Return ONLY JSON with this shape:
-{
-  "stop": <boolean>,
-  "nextAgentId": "<string, required if stop=false>",
-  "reason": "<string, optional>"
-}
+Important Reminder:
+Your feedback and score should be based on your perspective and/or specialty. Avoid generating
+evaluations that duplicate or closely mirror those of other agents.

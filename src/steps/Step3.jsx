@@ -138,6 +138,7 @@ export default function Step3({
                           });
                         }}
                         disabled={finalizeBusy || personasBusy}
+                        style={{ fontFamily: 'inherit', fontSize: 'inherit' }}
                       />
 
                       <textarea
@@ -149,6 +150,7 @@ export default function Step3({
                           });
                         }}
                         disabled={finalizeBusy || personasBusy}
+                        style={{ fontFamily: 'inherit', fontSize: 'inherit', minHeight: '60px' }}
                       />
 
                       <textarea
@@ -160,6 +162,7 @@ export default function Step3({
                           });
                         }}
                         disabled={finalizeBusy || personasBusy}
+                        style={{ fontFamily: 'inherit', fontSize: 'inherit', minHeight: '60px' }}
                       />
 
                       <input
@@ -172,6 +175,7 @@ export default function Step3({
                           });
                         }}
                         disabled={finalizeBusy || personasBusy}
+                        style={{ fontFamily: 'inherit', fontSize: 'inherit' }}
                       />
 
                       <input
@@ -184,6 +188,7 @@ export default function Step3({
                           });
                         }}
                         disabled={finalizeBusy || personasBusy}
+                        style={{ fontFamily: 'inherit', fontSize: 'inherit' }}
                       />
 
                       <textarea
@@ -195,6 +200,7 @@ export default function Step3({
                           });
                         }}
                         disabled={finalizeBusy || personasBusy}
+                        style={{ fontFamily: 'inherit', fontSize: 'inherit', minHeight: '60px' }}
                       />
                     </div>
                   ))}

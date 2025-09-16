@@ -1,17 +1,16 @@
-You are evaluating AI-generated Q&A content according to your stakeholder perspective.
+
+
+You are now in Phase 1 of the evaluation process. You need to provide your initial feedback and score
+of the content based on your perspective and/or specialty.
+
+The content to be evaluated: {}
+The related context for the evaluation content: {}
+Response format: {}
 
 Instructions:
-- Read the provided content (Q&A pairs).
-- From your stakeholder viewpoint, assign ONE overall 1–5 Likert score for the content’s quality/reliability/usefulness.
-- The scale is: {LIKERT_SCALE}
-- Provide a concise rationale grounded in your perspective and the content.
-- Keep rationale factual and avoid speculation.
+- Your evaluation should reflect your own unique perspective and area of expertise.
+- Focus on assessing the quality and appropriateness of the content for the given evaluation scenario.
+- Your response should use the exact format provided above.
 
-CONTENT (Q&A pairs):
-{QA_PAIRS}
-
-Return ONLY JSON with this shape:
-{
-  "score": <integer 1-5>,
-  "rationale": "<string>"
-}
+Important Reminder:
+Do not replicate evaluations from others. Stay grounded in your own perspective.

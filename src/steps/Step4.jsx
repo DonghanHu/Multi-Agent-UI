@@ -65,7 +65,7 @@ export default function Step4({
   phase3, phase3Busy, onRunPhase3,
   task
 }) {
-  // Local fallbacks if parent didn’t supply states/handlers
+  // Local fallbacks if parent didn't supply states/handlers
   const [p1Busy, setP1Busy] = useState(false);
   const [p2Busy, setP2Busy] = useState(false);
   const [p3Busy, setP3Busy] = useState(false);
@@ -77,6 +77,7 @@ export default function Step4({
   const [p1Log, setP1Log] = useState([]);
   const [p2Log, setP2Log] = useState([]);
   const [p3Log, setP3Log] = useState([]);
+
 
   // auto-scroll refs
   const p1LogRef = useRef(null);
@@ -100,8 +101,11 @@ export default function Step4({
     }
     try {
       setCreatingAgents(true);
+      console.log("[UI] =============== GENERATE AGENTS UI DEBUG ===============");
       console.log("[UI] Generate Agents clicked. Currently disabled? ", creatingAgents);
       console.log("[UI] personasResults length: ", personasResults.length);
+      console.log("[UI] personasResults data:", JSON.stringify(personasResults, null, 2));
+      console.log("[UI] task:", task);
 
       const resp = await fetch("/api/agents/generate_from_personas", {
         method: "POST",
@@ -251,6 +255,7 @@ export default function Step4({
     }
   };
 
+
   // Trigger wrappers: prefer external handler if provided, otherwise default
   const onPhase1Click = async () => {
     const disabled =
@@ -295,19 +300,44 @@ export default function Step4({
 
         {!!(agents?.length) && (
           <div className="grid" style={{ gap: 8 }}>
-            <strong className="muted-strong">Agents ({agents.length})</strong>
+            <strong className="muted-strong">Generated Agents ({agents.length}) - Using table14_instantiate.txt</strong>
             {agents.map((a) => (
-              <div key={a.agentId} className="qa-item grid" style={{ gap: 6 }}>
+              <div key={a.agentId} className="qa-item grid" style={{ gap: 8 }}>
                 <div className="row" style={{ justifyContent: "space-between" }}>
-                  <strong>{a.name}</strong>
-                  <span className="muted mono">{a.fromFile}</span>
+                  <strong>{a.agentName || a.name || a.agentId}</strong>
+                  <span className="muted mono">ID: {a.agentId}</span>
                 </div>
-                <div className="muted">
-                  <div><b>Stakeholder:</b> {a.stakeholder}</div>
-                  <div><b>Perspective:</b> {a?.persona?.perspective}</div>
-                  <div><b>Specialty:</b> {a?.persona?.specialty}</div>
+                
+                <div className="grid" style={{ gap: 4 }}>
+                  <div className="muted"><b>Source File:</b> {a.fromFile}</div>
+                  <div className="muted"><b>Stakeholder:</b> {a.stakeholder}</div>
+                  <div className="muted"><b>Demographic:</b> {a.demographicInformation}</div>
+                  <div className="muted"><b>Perspective:</b> {a.perspective}</div>
+                  <div className="muted"><b>Specialty:</b> {a.specialty}</div>
+                  <div className="muted"><b>Psychological Traits:</b> {a.psychologicalTraits}</div>
+                  <div className="muted"><b>Social Relationships:</b> {a.socialRelationships}</div>
                 </div>
-                <textarea readOnly value={a.instantiationPrompt || ""} />
+
+                <details style={{ marginTop: "8px" }}>
+                  <summary className="muted" style={{ cursor: "pointer", fontWeight: "bold" }}>
+                    📄 Complete Instantiated Prompt (from table14_instantiate.txt)
+                  </summary>
+                  <div style={{ 
+                    background: "#f9fafb", 
+                    border: "1px solid #e5e7eb",
+                    borderRadius: "8px", 
+                    padding: "12px", 
+                    marginTop: "8px",
+                    fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                    fontSize: "13px",
+                    lineHeight: "1.5",
+                    whiteSpace: "pre-wrap",
+                    maxHeight: "300px",
+                    overflow: "auto"
+                  }}>
+                    {a.instantiationPrompt || "No instantiated prompt available"}
+                  </div>
+                </details>
               </div>
             ))}
           </div>
