@@ -216,6 +216,12 @@ export default function Step4({
 
   // Trigger wrappers: prefer external handler if provided, otherwise default
   const onPhase1Click = async () => {
+    console.log(">>> [Run Phase 1 button clicked] (Step4.jsx)");
+    console.log("    agents.length:", agents.length);
+    console.log("    qaPairs.length:", qaPairs.length);
+    console.log("    effectiveP1Busy:", effectiveP1Busy);
+    console.log(onRunPhase1 ? "    Using external onRunPhase1 handler" : "    Using runPhase1Default");
+    
     if (onRunPhase1) return onRunPhase1();
     return runPhase1Default();
     // (if you want to pipe external streaming logs into p1Log, have your handler call a callback you pass in)
@@ -232,7 +238,7 @@ export default function Step4({
   return (
     <div className="card grid" style={{ gap: 18 }}>
       <h2>Step 4 — Three-Phase Stakeholder Debate</h2>
-      <p className="muted">
+      <p className="">
         Run Phase 1 (independent evaluations), Phase 2 (coordinated debate), and Phase 3 (aggregation).
       </p>
 
@@ -240,6 +246,10 @@ export default function Step4({
       <section className="grid" style={{ gap: 10 }}>
         <h3>Phase 1 — Independent Evaluations</h3>
         <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          {/* Debug info */}
+          <div style={{ fontSize: '12px', color: 'red', marginBottom: '8px' }}>
+            DEBUG: agents.length={agents.length}, qaPairs.length={qaPairs.length}, busy={effectiveP1Busy}
+          </div>
           <button
             className={`btn ${effectiveP1Busy ? "running" : ""}`}
             onClick={onPhase1Click}

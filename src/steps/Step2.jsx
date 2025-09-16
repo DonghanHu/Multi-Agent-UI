@@ -1,5 +1,5 @@
 // src/steps/Step2.jsx
-import React, {useState} from "react";
+import React, { useState } from "react";
 import Dropzone from "../components/Dropzone.jsx";
 import FileList from "../components/FileList.jsx";
 
@@ -17,7 +17,6 @@ export default function Step2({
   saveStakeholders,
   handleNextFromStep2,
 }) {
-
   const [combineBusyIdx, setCombineBusyIdx] = useState(null);
 
   function isTupleResult(r) {
@@ -39,7 +38,7 @@ export default function Step2({
 
   async function combineSimilar(idx) {
     try {
-      setCombineBusyIdx(idx); // 🔴 mark busy
+      setCombineBusyIdx(idx); // mark busy for this card
       const r = paperResults[idx];
       if (!isTupleResult(r)) {
         alert("Combine is only available when results are stakeholder tuples.");
@@ -62,7 +61,7 @@ export default function Step2({
     } catch (e) {
       alert(e.message || "Failed to combine stakeholders.");
     } finally {
-      setCombineBusyIdx(null); // ✅ reset
+      setCombineBusyIdx(null); // clear busy
     }
   }
 
@@ -97,9 +96,6 @@ export default function Step2({
       </label>
 
       <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-        {/* <button className="btn" disabled={paperBusy} onClick={generatePapers}>
-          {paperBusy ? "Analyzing…" : "Analyze Papers (summary/keys)"}
-        </button> */}
         <button
           className="btn"
           disabled={paperBusy}
@@ -116,6 +112,7 @@ export default function Step2({
 
             {paperResults.map((r, idx) => {
               const tupleMode = isTupleResult(r);
+              const isCombiningThis = combineBusyIdx === idx;
 
               return (
                 <div key={idx} className="qa-item grid" style={{ gap: 12 }}>
@@ -126,12 +123,14 @@ export default function Step2({
                       alignItems: "center",
                     }}
                   >
-                    <div>
+                    <div className="row" style={{ gap: 8, alignItems: "center" }}>
                       <strong>{r.file}</strong>
-                      <span className="muted mono" style={{ marginLeft: 8 }}>
-                        {r.filename}
-                      </span>
+                      <span className="muted mono">{r.filename}</span>
+                      {isCombiningThis && (
+                        <span className="pill" aria-live="polite">Combining…</span>
+                      )}
                     </div>
+
                     <div className="row" style={{ gap: 8 }}>
                       {tupleMode ? (
                         <>
@@ -140,12 +139,17 @@ export default function Step2({
                             className="btn secondary"
                             onClick={() => combineSimilar(idx)}
                             title="Merge/cluster similar stakeholders and deduplicate pairs"
+                            disabled={isCombiningThis}
+                            aria-busy={isCombiningThis ? "true" : "false"}
                           >
-                            Combine Similar Stakeholders
+                            {isCombiningThis
+                              ? "Combining…"
+                              : "Combine Similar Items"}
                           </button>
                           <button
                             className="btn"
                             onClick={() => saveStakeholders(idx)}
+                            disabled={isCombiningThis}
                           >
                             Save JSON
                           </button>
@@ -153,7 +157,10 @@ export default function Step2({
                       ) : (
                         <>
                           <span className="pill">Analysis</span>
-                          <button className="btn" onClick={() => savePaper(idx)}>
+                          <button
+                            className="btn"
+                            onClick={() => savePaper(idx)}
+                          >
                             Save JSON
                           </button>
                         </>
@@ -163,7 +170,7 @@ export default function Step2({
 
                   {/* Tuples editor */}
                   {tupleMode && (
-                    <div className="grid" style={{ gap: 14 }}>
+                    <div className="grid" style={{ gap: 14, opacity: isCombiningThis ? 0.7 : 1 }}>
                       {(r.data || []).map((st, i) => (
                         <div
                           key={i}
@@ -192,6 +199,7 @@ export default function Step2({
                                     copy[idx].data.splice(i, 1);
                                   })
                                 }
+                                disabled={isCombiningThis}
                               >
                                 ✕
                               </button>
@@ -207,6 +215,7 @@ export default function Step2({
                                 copy[idx].data[i].name = e.target.value;
                               })
                             }
+                            disabled={isCombiningThis}
                           />
 
                           <textarea
@@ -217,6 +226,7 @@ export default function Step2({
                                 copy[idx].data[i].description = e.target.value;
                               })
                             }
+                            disabled={isCombiningThis}
                           />
 
                           <div className="grid" style={{ gap: 8 }}>
@@ -238,6 +248,7 @@ export default function Step2({
                                     });
                                   })
                                 }
+                                disabled={isCombiningThis}
                               >
                                 + Add Pair
                               </button>
@@ -256,6 +267,7 @@ export default function Step2({
                                     })
                                   }
                                   style={{ flex: 1 }}
+                                  disabled={isCombiningThis}
                                 />
                                 <input
                                   type="text"
@@ -268,6 +280,7 @@ export default function Step2({
                                     })
                                   }
                                   style={{ flex: 2 }}
+                                  disabled={isCombiningThis}
                                 />
                                 <button
                                   className="iconbtn"
@@ -277,6 +290,7 @@ export default function Step2({
                                       copy[idx].data[i].pairs.splice(j, 1);
                                     })
                                   }
+                                  disabled={isCombiningThis}
                                 >
                                   ✕
                                 </button>
@@ -300,6 +314,7 @@ export default function Step2({
                               });
                             })
                           }
+                          disabled={isCombiningThis}
                         >
                           + Add Stakeholder
                         </button>
@@ -307,7 +322,7 @@ export default function Step2({
                     </div>
                   )}
 
-                  {/* Analysis editor */}
+                  {/* Analysis editor (kept, though you removed the analyze action) */}
                   {!tupleMode && (
                     <div className="grid" style={{ gap: 12 }}>
                       <input

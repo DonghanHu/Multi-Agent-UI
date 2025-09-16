@@ -1,15 +1,15 @@
 :root {
-  --bg: #0f1115;
-  --card: #171a21;
-  --muted: #9aa3b2;
-  --text: #e6e9ee;
-  --accent: #4f8cff;
-  --accent-2: #7c4dff;
-  --border: #2a2f3a;
-  --pill: #1e2530;
-  --green: #2ecc71;
-  --red: #ff5c5c;
-  --shadow: rgba(0,0,0,0.35);
+  --bg: #ffffff;
+  --card: #ffffff;
+  --muted: #6b7280;
+  --text: #1f2937;
+  --accent: #3b82f6;
+  --accent-2: #8b5cf6;
+  --border: #e5e7eb;
+  --pill: #f3f4f6;
+  --green: #10b981;
+  --red: #ef4444;
+  --shadow: rgba(0,0,0,0.1);
 }
 
 * { box-sizing: border-box; }
@@ -20,7 +20,7 @@ html, body, #root {
 
 body {
   margin: 0;
-  background: linear-gradient(180deg, #0e1014 0%, #0b0d11 100%);
+  background: linear-gradient(180deg, #f9fafb 0%, #ffffff 100%);
   color: var(--text);
   font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
 }
@@ -38,7 +38,7 @@ h4 { font-size: 16px; margin: 0; }
 
 .muted { color: var(--muted); }
 .mono  { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
-.muted-strong { color: #cfd6e6; font-weight: 600; }
+.muted-strong { color: #374151; font-weight: 600; }
 
 .grid { display: grid; }
 .row  { display: flex; align-items: center; }
@@ -93,11 +93,12 @@ h4 { font-size: 16px; margin: 0; }
 .btn:active { transform: translateY(1px); }
 
 .btn.secondary {
-  background: #2b3240;
+  background: #f3f4f6;
+  color: #374151;
 }
 
 .iconbtn {
-  background: #242a35;
+  background: #f9fafb;
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -111,11 +112,11 @@ h4 { font-size: 16px; margin: 0; }
   border: 1px solid var(--border);
   padding: 6px 10px;
   border-radius: 999px;
-  color: #d6deee;
+  color: #374151;
 }
 
 .counter {
-  background: #223148;
+  background: #e5e7eb;
   border: 1px solid var(--border);
   padding: 2px 8px;
   border-radius: 999px;
@@ -126,7 +127,7 @@ h4 { font-size: 16px; margin: 0; }
   border-radius: 12px;
   padding: 24px;
   text-align: center;
-  background: #11141a;
+  background: #f9fafb;
   cursor: pointer;
 }
 
@@ -146,7 +147,7 @@ h4 { font-size: 16px; margin: 0; }
   border-radius: 10px;
   overflow: hidden;
 }
-.files-table thead { background: #141821; }
+.files-table thead { background: #f3f4f6; }
 .files-table th, .files-table td {
   padding: 10px 12px;
   text-align: left;
@@ -160,7 +161,7 @@ h4 { font-size: 16px; margin: 0; }
 }
 
 .qa-item {
-  background: #11141a;
+  background: #f9fafb;
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 12px;
@@ -169,7 +170,7 @@ h4 { font-size: 16px; margin: 0; }
 .sticky-actions {
   position: sticky;
   bottom: 0;
-  background: linear-gradient(180deg, rgba(23,26,33,0.0), rgba(23,26,33,1) 50%);
+  background: linear-gradient(180deg, rgba(255,255,255,0.0), rgba(255,255,255,1) 50%);
   padding-top: 10px;
   margin-top: 10px;
   display: flex;
@@ -179,7 +180,7 @@ h4 { font-size: 16px; margin: 0; }
 
 input[type="text"],
 textarea {
-  background: #0e1117;
+  background: #ffffff;
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -230,10 +231,10 @@ hr {
 .logbox {
   max-height: 180px;
   overflow: auto;
-  border: 1px solid #eee;
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 8px;
-  background: #fafafa;
+  background: #f9fafb;
   font-size: 0.92rem;
 }
 

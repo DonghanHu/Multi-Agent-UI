@@ -700,6 +700,10 @@ app.post("/api/debate/phase1", async (req, res) => {
     startNdjson(res);
     const { agents = [], qaPairs = [] } = req.body || {};
 
+    console.log(">>> [Run Phase 1 button clicked]");
+    console.log("    Agents length:", agents.length);
+    console.log("    Disabled on client?", (!agents.length || !qaPairs.length));
+
     writeLine(res, { type: "info", message: "Phase 1 started." });
     if (!qaPairs.length || !agents.length) {
       writeLine(res, { type: "error", message: "Missing qaPairs or agents." });
