@@ -78,7 +78,6 @@ export default function Step4({
   const [p2Log, setP2Log] = useState([]);
   const [p3Log, setP3Log] = useState([]);
 
-
   // auto-scroll refs
   const p1LogRef = useRef(null);
   const p2LogRef = useRef(null);
@@ -101,12 +100,6 @@ export default function Step4({
     }
     try {
       setCreatingAgents(true);
-      console.log("[UI] =============== GENERATE AGENTS UI DEBUG ===============");
-      console.log("[UI] Generate Agents clicked. Currently disabled? ", creatingAgents);
-      console.log("[UI] personasResults length: ", personasResults.length);
-      console.log("[UI] personasResults data:", JSON.stringify(personasResults, null, 2));
-      console.log("[UI] task:", task);
-
       const resp = await fetch("/api/agents/generate_from_personas", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -146,15 +139,19 @@ export default function Step4({
 
   // Default streaming calls if parent didn’t provide onRunPhase*
   const runPhase1Default = async () => {
+    // Clear old state
     setP1(null);
     setP1Busy(true);
     setP1Log([]);
-    pushP1({ type: "info", message: "Starting Phase 1…" });
+    pushP1({ type: "info", message: "Starting Phase 1… (running phase1Independent.txt per agent)" });
 
     try {
       const resp = await fetch("/api/debate/phase1", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Accept": "application/x-ndjson" },
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/x-ndjson"
+        },
         body: JSON.stringify({ qaPairs, agents })
       });
 
@@ -163,9 +160,18 @@ export default function Step4({
         throw new Error(err?.error || `HTTP ${resp.status}`);
       }
 
+      // Stream server logs + results
       await streamNDJSON(resp, (line) => {
         if (line.message) pushP1({ type: line.type || "log", message: line.message });
+        if (line.partial?.agentId) {
+          const agent = agents.find(a => a.agentId === line.partial.agentId);
+          pushP1({
+            type: "log",
+            message: `Received partial score for ${agent?.agentName || agent?.name || line.partial.agentId}: ${line.partial.score}`
+          });
+        }
         if (line.initialEvaluations) {
+          // Final result payload for Phase 1
           setP1({ initialEvaluations: line.initialEvaluations });
         }
       });
@@ -192,7 +198,7 @@ export default function Step4({
       const resp = await fetch("/api/debate/phase2", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Accept": "application/x-ndjson" },
-        body: JSON.stringify({ qaPairs, agents, phase1: effectivePhase1 })
+        body: JSON.stringify({ qaPairs, agents, phase1: effectivePhase1, maxRounds: 12 })
       });
 
       if (!resp.ok) {
@@ -255,15 +261,11 @@ export default function Step4({
     }
   };
 
-
   // Trigger wrappers: prefer external handler if provided, otherwise default
   const onPhase1Click = async () => {
     const disabled =
       effectiveP1Busy || !(agents?.length > 0) || !(qaPairs?.length > 0);
-    console.log(">>> [Run Phase 1 button clicked] (Step4.jsx)");
-    console.log("    Agents length:", agents?.length ?? 0);
-    console.log("    Button disabled?", disabled);
-    console.log(onRunPhase1 ? "    Using external onRunPhase1 handler" : "    Using internal runPhase1Default");
+    if (disabled) return;
     if (onRunPhase1) return onRunPhase1();
     return runPhase1Default();
   };
@@ -280,7 +282,7 @@ export default function Step4({
     <div className="card grid" style={{ gap: 18 }}>
       <h2>Step 4 — Three-Phase Stakeholder Debate</h2>
       <p className="muted">
-        First, generate agents (one per persona) using the button below. Then, run Phase 1 (independent evaluations), Phase 2 (multi-turn debate), and Phase 3 (aggregation) in order. Each phase builds on the results of the previous step.
+        First, generate agents (one per persona). Then run Phase 1 (independent evaluations), Phase 2 (multi-turn debate), and Phase 3 (aggregation).
       </p>
 
       {/* Generate Agents */}
@@ -299,26 +301,26 @@ export default function Step4({
         </div>
 
         {!!(agents?.length) && (
-          <div className="grid" style={{ gap: 8 }}>
+          <div className="grid" style={{ gap: 8, maxWidth: "100%", overflow: "hidden" }}>
             <strong className="muted-strong">Generated Agents ({agents.length}) - Using table14_instantiate.txt</strong>
             {agents.map((a) => (
-              <div key={a.agentId} className="qa-item grid" style={{ gap: 8 }}>
+              <div key={a.agentId} className="qa-item grid" style={{ gap: 8, maxWidth: "100%", overflow: "hidden" }}>
                 <div className="row" style={{ justifyContent: "space-between" }}>
                   <strong>{a.agentName || a.name || a.agentId}</strong>
                   <span className="muted mono">ID: {a.agentId}</span>
                 </div>
                 
-                <div className="grid" style={{ gap: 4 }}>
-                  <div className="muted"><b>Source File:</b> {a.fromFile}</div>
-                  <div className="muted"><b>Stakeholder:</b> {a.stakeholder}</div>
-                  <div className="muted"><b>Demographic:</b> {a.demographicInformation}</div>
-                  <div className="muted"><b>Perspective:</b> {a.perspective}</div>
-                  <div className="muted"><b>Specialty:</b> {a.specialty}</div>
-                  <div className="muted"><b>Psychological Traits:</b> {a.psychologicalTraits}</div>
-                  <div className="muted"><b>Social Relationships:</b> {a.socialRelationships}</div>
+                <div className="grid" style={{ gap: 4, maxWidth: "100%", overflow: "hidden" }}>
+                  <div className="muted" style={{ wordWrap: "break-word", overflowWrap: "break-word" }}><b>Source File:</b> {a.fromFile}</div>
+                  <div className="muted" style={{ wordWrap: "break-word", overflowWrap: "break-word" }}><b>Stakeholder:</b> {a.stakeholder}</div>
+                  <div className="muted" style={{ wordWrap: "break-word", overflowWrap: "break-word" }}><b>Demographic:</b> {a.demographicInformation}</div>
+                  <div className="muted" style={{ wordWrap: "break-word", overflowWrap: "break-word" }}><b>Perspective:</b> {a.perspective}</div>
+                  <div className="muted" style={{ wordWrap: "break-word", overflowWrap: "break-word" }}><b>Specialty:</b> {a.specialty}</div>
+                  <div className="muted" style={{ wordWrap: "break-word", overflowWrap: "break-word" }}><b>Psychological Traits:</b> {a.psychologicalTraits}</div>
+                  <div className="muted" style={{ wordWrap: "break-word", overflowWrap: "break-word" }}><b>Social Relationships:</b> {a.socialRelationships}</div>
                 </div>
 
-                <details style={{ marginTop: "8px" }}>
+                <details style={{ marginTop: "8px", maxWidth: "100%", overflow: "hidden" }}>
                   <summary className="muted" style={{ cursor: "pointer", fontWeight: "bold" }}>
                     📄 Complete Instantiated Prompt (from table14_instantiate.txt)
                   </summary>
@@ -332,8 +334,12 @@ export default function Step4({
                     fontSize: "13px",
                     lineHeight: "1.5",
                     whiteSpace: "pre-wrap",
+                    wordWrap: "break-word",
+                    overflowWrap: "break-word",
                     maxHeight: "300px",
-                    overflow: "auto"
+                    maxWidth: "100%",
+                    overflow: "auto",
+                    boxSizing: "border-box"
                   }}>
                     {a.instantiationPrompt || "No instantiated prompt available"}
                   </div>
@@ -355,14 +361,14 @@ export default function Step4({
             onClick={onPhase1Click}
             disabled={effectiveP1Busy || !(agents?.length > 0) || !(qaPairs?.length > 0)}
             title={
-              !(agents?.length > 0) ? "Build agents first" :
-              !(qaPairs?.length > 0) ? "Complete Step 1 first" : ""
+              !(agents?.length > 0) ? "Build/generate agents first" :
+              !(qaPairs?.length > 0) ? "Complete Step 1 (Q&A) first" : ""
             }
           >
             {effectiveP1Busy ? "Running Phase 1…" : "Run Phase 1"}
           </button>
           <span className="muted">
-            Each agent scores (1–5) and explains the rationale from its persona.
+            Runs <code>server/prompts/phase1Independent.txt</code> for each agent. Scores (1–5) + rationale will appear below.
           </span>
         </div>
 
@@ -373,15 +379,20 @@ export default function Step4({
           ))}
         </div>
 
+        {/* Per-agent result cards */}
         {effectivePhase1?.initialEvaluations?.length > 0 && (
           <div className="grid" style={{ gap: 8, marginTop: 8 }}>
+            <strong className="muted-strong">Phase 1 Results</strong>
             {effectivePhase1.initialEvaluations.map((ev, i) => {
               const agent = agents.find(a => a.agentId === ev.agentId);
               return (
                 <div key={i} className="qa-item grid" style={{ gap: 6 }}>
-                  <div className="row" style={{ justifyContent: "space-between" }}>
-                    <strong>{agent?.name || ev.agentId}</strong>
-                    <span className="muted">Score: {ev.score}</span>
+                  <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline" }}>
+                    <div className="row" style={{ gap: 10, alignItems: "baseline" }}>
+                      <strong>{agent?.agentName || agent?.name || ev.agentId}</strong>
+                      <span className="muted mono">ID: {ev.agentId}</span>
+                    </div>
+                    <span className="pill">{ev.score}</span>
                   </div>
                   <div className="muted">{ev.rationale}</div>
                 </div>
@@ -441,7 +452,7 @@ export default function Step4({
               return (
                 <div key={i} className="qa-item grid" style={{ gap: 6 }}>
                   <div className="row" style={{ justifyContent: "space-between" }}>
-                    <strong>{agent?.name || ev.agentId}</strong>
+                    <strong>{agent?.agentName || agent?.name || ev.agentId}</strong>
                     <span className="muted">Final Score: {ev.score}</span>
                   </div>
                   <div className="muted">{ev.rationale}</div>

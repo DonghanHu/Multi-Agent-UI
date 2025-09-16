@@ -1,6 +1,16 @@
-import React from "react";
+import React, { useState } from "react";
 import Dropzone from "../components/Dropzone.jsx";
 import FileList from "../components/FileList.jsx";
+
+function dedupePairs(pairs) {
+  const seen = new Set();
+  return pairs.filter(p => {
+    const key = (p.question || "") + "||" + (p.answer || "");
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
 
 export default function Step1({
   qaFiles,
@@ -9,10 +19,13 @@ export default function Step1({
   setQaPairs,
   qaFilename,
   qaBusy,
-  generateQA,
+  generateQA,        // existing PDF flow (handled in App.jsx)
   saveQA,
   handleNextFromStep1,
 }) {
+  const [manualText, setManualText] = useState("");
+  const [manualBusy, setManualBusy] = useState(false);
+
   function movePair(i, dir) {
     const j = i + dir;
     if (j < 0 || j >= qaPairs.length) return;
@@ -20,13 +33,53 @@ export default function Step1({
     [copy[i], copy[j]] = [copy[j], copy[i]];
     setQaPairs(copy);
   }
+
   function duplicatePair(i) {
     const copy = [...qaPairs];
     copy.splice(i + 1, 0, { ...copy[i] });
     setQaPairs(copy);
   }
+
   function deletePair(i) {
     setQaPairs(qaPairs.filter((_, idx) => idx !== i));
+  }
+
+  async function generateQAFromText() {
+    const text = manualText.trim();
+    if (!text) {
+      alert("Please paste or type some text first.");
+      return;
+    }
+    setManualBusy(true);
+    try {
+      const resp = await fetch("/api/qa/generate_from_text", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err?.error || `HTTP ${resp.status}`);
+      }
+      const data = await resp.json();
+      const pairs = Array.isArray(data?.data?.pairs) ? data.data.pairs : [];
+      if (!pairs.length) {
+        alert("No Q&A pairs were generated from the text.");
+        return;
+      }
+      // ✅ merge with existing pairs + de-dupe
+      setQaPairs(prev => dedupePairs([...prev, ...pairs]));
+      // If you want to reflect the filename from text generation in UI,
+      // pass setQaFilename in props from App.jsx and call setQaFilename(data.filename).
+      // For now we just log it:
+      if (data?.filename) {
+        console.log("[Step1] Generated-from-text filename:", data.filename);
+      }
+    } catch (e) {
+      alert(e?.message || "Failed to generate Q&A from text.");
+    } finally {
+      setManualBusy(false);
+    }
   }
 
   return (
@@ -46,7 +99,7 @@ export default function Step1({
         </span>
       </div>
 
-      {/* Step 1 uploader */}
+      {/* ----- Option A: Upload PDFs (existing) ----- */}
       <Dropzone
         onFiles={(newFiles) => setQaFiles((prev) => [...prev, ...newFiles])}
       />
@@ -58,9 +111,9 @@ export default function Step1({
         onClear={() => setQaFiles([])}
       />
 
-      <div className="row">
+      <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
         <button className="btn" disabled={qaBusy} onClick={generateQA}>
-          {qaBusy ? "Generating…" : "Generate Q&A"}
+          {qaBusy ? "Generating…" : "Generate Q&A (from PDFs)"}
         </button>
         {!!qaPairs.length && (
           <button className="btn secondary" onClick={saveQA}>
@@ -72,6 +125,25 @@ export default function Step1({
             Last saved as: <span className="mono">{qaFilename}</span>
           </span>
         )}
+      </div>
+
+      {/* ----- Option B: Manual Text (new) ----- */}
+      <div className="grid" style={{ gap: 8, marginTop: 8 }}>
+        <h3 className="muted-strong">Or paste text directly</h3>
+        <textarea
+          value={manualText}
+          onChange={(e) => setManualText(e.target.value)}
+          placeholder="Paste or type source text here (an abstract, section, or any content)…"
+          style={{ width: "100%", minHeight: 140, fontFamily: "inherit", fontSize: "inherit" }}
+        />
+        <div className="row" style={{ gap: 8 }}>
+          <button className="btn" onClick={generateQAFromText} disabled={manualBusy}>
+            {manualBusy ? "Generating…" : "Generate Q&A (from Text)"}
+          </button>
+          <span className="muted">
+            This sends the text to <code>/api/qa/generate_from_text</code> and merges the returned pairs with the current list.
+          </span>
+        </div>
       </div>
 
       {!!qaPairs.length && (
