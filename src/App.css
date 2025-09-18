@@ -10,6 +10,7 @@
   --green: #10b981;
   --red: #ef4444;
   --shadow: rgba(0,0,0,0.1);
+  --sticky-height: 64px;
 }
 
 * { box-sizing: border-box; }
@@ -170,13 +171,22 @@ h4 { font-size: 16px; margin: 0; }
 .sticky-actions {
   position: sticky;
   bottom: 0;
-  background: linear-gradient(180deg, rgba(255,255,255,0.0), rgba(255,255,255,1) 50%);
-  padding-top: 10px;
-  margin-top: 10px;
+  z-index: 5; /* keep it above content */
   display: flex;
   gap: 10px;
   justify-content: flex-end;
+  align-items: center;
+  min-height: var(--sticky-height);
+  padding: 10px 0 10px; /* vertical padding inside the bar */
+
+  /* Solid background + soft top border so it doesn't feel like overlapping */
+  background: #fff;
+  border-top: 1px solid var(--border);
+
+  /* Optional gentle gradient flair; remove if you prefer flat */
+  background-image: linear-gradient(180deg, rgba(255,255,255,0.4), #fff 60%);
 }
+
 
 input[type="text"],
 textarea {

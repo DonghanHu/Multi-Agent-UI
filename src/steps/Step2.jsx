@@ -66,7 +66,7 @@ export default function Step2({
   }
 
   return (
-    <div className="card grid" style={{ gap: 16 }}>
+    <div className="card grid" style={{ gap: 16 , paddingBottom: "var(--sticky-height, 64px)" }}>
       <h2>Step 2 — Upload Research Papers → Analysis and Stakeholder Tuples</h2>
       <div className="muted">
         Add PDFs and a Task Description. <em>Extract Stakeholders</em>.

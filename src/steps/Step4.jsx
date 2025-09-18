@@ -1,5 +1,5 @@
 // src/steps/Step4.jsx
-import React, { useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 /** Utility to download JSON blobs */
 function downloadJSON(filename, data) {
@@ -59,7 +59,7 @@ export default function Step4({
   setAgentsFile, setAgents,
   evalFile, evaluations, // legacy
 
-  // optional external handlers + states (if you already wired in App.jsx; otherwise we self-manage)
+  // optional external handlers + states (if already wired in App.jsx; otherwise we self-manage)
   phase1, phase1Busy, onRunPhase1,
   phase2, phase2Busy, onRunPhase2,
   phase3, phase3Busy, onRunPhase3,
@@ -78,6 +78,9 @@ export default function Step4({
   const [p2Log, setP2Log] = useState([]);
   const [p3Log, setP3Log] = useState([]);
 
+  // Phase 2: score trajectories (agentId -> [scores...])
+  const [scoreTraj, setScoreTraj] = useState({}); // { [agentId]: number[] }
+
   // auto-scroll refs
   const p1LogRef = useRef(null);
   const p2LogRef = useRef(null);
@@ -92,6 +95,52 @@ export default function Step4({
   const effectiveP3Busy = (typeof phase3Busy === "boolean" ? phase3Busy : p3Busy);
 
   const [creatingAgents, setCreatingAgents] = useState(false);
+
+  // Initialize trajectories from Phase 1 when available
+  useEffect(() => {
+    if (effectivePhase1?.initialEvaluations?.length) {
+      const map = {};
+      for (const ev of effectivePhase1.initialEvaluations) {
+        if (typeof ev.score === "number") {
+          // For individual Q&A evaluations, collect all scores for each agent
+          if (!map[ev.agentId]) {
+            map[ev.agentId] = [];
+          }
+          map[ev.agentId].push(ev.score);
+        }
+      }
+      // Calculate average initial score for each agent to show in trajectory
+      const avgMap = {};
+      for (const [agentId, scores] of Object.entries(map)) {
+        if (scores.length > 0) {
+          const avg = scores.reduce((sum, score) => sum + score, 0) / scores.length;
+          avgMap[agentId] = [Number(avg.toFixed(2))];
+        } else {
+          avgMap[agentId] = [];
+        }
+      }
+      setScoreTraj(avgMap);
+    }
+  }, [effectivePhase1]);
+
+  // When Phase 2 final evaluations arrive, append final scores to trajectories
+  useEffect(() => {
+    if (effectivePhase2?.finalEvaluations?.length) {
+      setScoreTraj(prev => {
+        const copy = { ...prev };
+        for (const ev of effectivePhase2.finalEvaluations) {
+          if (typeof ev.score === "number") {
+            const arr = copy[ev.agentId] ? [...copy[ev.agentId]] : [];
+            if (arr.length === 0 || arr[arr.length - 1] !== ev.score) {
+              arr.push(ev.score);
+            }
+            copy[ev.agentId] = arr;
+          }
+        }
+        return copy;
+      });
+    }
+  }, [effectivePhase2]);
 
   async function handleGenerateAgents() {
     if (!Array.isArray(personasResults) || personasResults.length === 0) {
@@ -143,20 +192,21 @@ export default function Step4({
     setP1(null);
     setP1Busy(true);
     setP1Log([]);
-// Count agents/questions and log
-  const numAgents = Array.isArray(agents) ? agents.length : 0;
-  const numQuestions = Array.isArray(qaPairs) ? qaPairs.length : 0;
-  const totalEvals = numAgents * numQuestions;
-
-  console.log(`[Phase 1] Questions to evaluate: ${numQuestions}`);
-  console.log(`[Phase 1] Agents: ${numAgents}`);
-  console.log(`[Phase 1] Total (agent × question) evaluations: ${totalEvals}`);
-
-
-
-
-
     pushP1({ type: "info", message: "Starting Phase 1… (running phase1Independent.txt per agent)" });
+
+    // Count agents/questions and log
+    const numAgents = Array.isArray(agents) ? agents.length : 0;
+    const numQuestions = Array.isArray(qaPairs) ? qaPairs.length : 0;
+    const totalEvals = numAgents * numQuestions;
+
+    console.log(`[Phase 1] Questions to evaluate: ${numQuestions}`);
+    console.log(`[Phase 1] Agents: ${numAgents}`);
+    console.log(`[Phase 1] Total (agent × question) evaluations: ${totalEvals}`);
+
+    pushP1({
+      type: "info",
+      message: `Agents: ${numAgents} · Questions: ${numQuestions} · Total evals: ${totalEvals}`
+    });
 
     try {
       const resp = await fetch("/api/debate/phase1", {
@@ -180,7 +230,7 @@ export default function Step4({
           const agent = agents.find(a => a.agentId === line.partial.agentId);
           pushP1({
             type: "log",
-            message: `Received partial score for ${agent?.agentName || agent?.name || line.partial.agentId}: ${line.partial.score}`
+            message: `Partial score for ${agent?.agentName || agent?.name || line.partial.agentId}: ${line.partial.score}`
           });
         }
         if (line.initialEvaluations) {
@@ -197,6 +247,13 @@ export default function Step4({
     }
   };
 
+  // Pretty label for an agent
+  const labelForAgent = (agentId) => {
+    const agent = agents?.find(a => a.agentId === agentId);
+    return agent?.agentName || agent?.name || agentId;
+  };
+
+  // Phase 2 streaming; robust to different shapes {transcript}, {turn}, {finalEvaluations}
   const runPhase2Default = async () => {
     if (!(effectivePhase1?.initialEvaluations?.length > 0)) {
       pushP2({ type: "warn", message: "Phase 1 results required." });
@@ -205,7 +262,35 @@ export default function Step4({
     setP2(null);
     setP2Busy(true);
     setP2Log([]);
-    pushP2({ type: "info", message: "Starting Phase 2 (debate) …" });
+    pushP2({ type: "info", message: "Starting Phase 2 (free debate; Table 16) …" });
+
+    // Re-init trajectories from Phase 1, keep in sync during debate
+    setScoreTraj(() => {
+      const map = {};
+      const scoreMap = {};
+      
+      // Collect all scores for each agent from individual evaluations
+      for (const ev of (effectivePhase1?.initialEvaluations || [])) {
+        if (typeof ev.score === "number") {
+          if (!scoreMap[ev.agentId]) {
+            scoreMap[ev.agentId] = [];
+          }
+          scoreMap[ev.agentId].push(ev.score);
+        }
+      }
+      
+      // Calculate average initial score for each agent
+      for (const [agentId, scores] of Object.entries(scoreMap)) {
+        if (scores.length > 0) {
+          const avg = scores.reduce((sum, score) => sum + score, 0) / scores.length;
+          map[agentId] = [Number(avg.toFixed(2))];
+        } else {
+          map[agentId] = [];
+        }
+      }
+      
+      return map;
+    });
 
     try {
       const resp = await fetch("/api/debate/phase2", {
@@ -219,13 +304,91 @@ export default function Step4({
         throw new Error(err?.error || `HTTP ${resp.status}`);
       }
 
+      // Maintain a local transcript to avoid re-diffing large arrays
+      let localTranscript = [];
+
       await streamNDJSON(resp, (line) => {
+        // server info logs
         if (line.message) pushP2({ type: line.type || "log", message: line.message });
-        if (line.transcript) {
-          setP2(prev => ({ ...(prev || {}), transcript: line.transcript }));
+
+        // If server streams full transcript arrays, take them
+        if (Array.isArray(line.transcript)) {
+          // append only new items
+          const newItems = line.transcript.slice(localTranscript.length);
+          if (newItems.length) {
+            localTranscript = line.transcript;
+            setP2(prev => ({ ...(prev || {}), transcript: localTranscript }));
+
+            // Log each new item
+            for (const t of newItems) {
+              if (t.speaker === "coordinator") {
+                pushP2({ type: "info", message: t.text });
+              } else {
+                const act = t.act ? ` [${t.act}]` : "";
+                pushP2({
+                  type: "log",
+                  message: `${labelForAgent(t.speaker)}${act}: ${t.text}`
+                });
+              }
+            }
+          }
         }
-        if (line.finalEvaluations) {
+
+        // If server emits a single speaker turn object (more granular)
+        if (line.turn && typeof line.turn === "object") {
+          const { agentId, comment, act, targetAgentId, updatedScore, updatedRationale, final, round } = line.turn;
+          // Append to local transcript & state
+          const entry = {
+            round: round || (localTranscript.length ? localTranscript[localTranscript.length - 1].round : 1),
+            speaker: agentId || "unknown",
+            text: comment || "",
+            act: act || undefined,
+            targetAgentId: targetAgentId || undefined
+          };
+          localTranscript = [...localTranscript, entry];
+          setP2(prev => ({ ...(prev || {}), transcript: localTranscript }));
+
+          // Log nicely
+          const badge = act ? ` [${act}${targetAgentId ? ` → @${labelForAgent(targetAgentId)}` : ""}]` : "";
+          pushP2({ type: "log", message: `${labelForAgent(agentId)}${badge}: ${comment || ""}` });
+
+          // If updated score streamed mid-debate, append to trajectory
+          if (typeof updatedScore === "number") {
+            setScoreTraj(prev => {
+              const copy = { ...prev };
+              const arr = copy[agentId] ? [...copy[agentId]] : [];
+              if (arr.length === 0 || arr[arr.length - 1] !== updatedScore) {
+                arr.push(updatedScore);
+              }
+              copy[agentId] = arr;
+              return copy;
+            });
+          }
+
+          // Final turns can be logged explicitly
+          if (final) {
+            pushP2({ type: "info", message: `${labelForAgent(agentId)}: NO MORE COMMENTS` });
+          }
+        }
+
+        // Final evaluations arrive (end-of-debate per-agent scores/rationales)
+        if (Array.isArray(line.finalEvaluations)) {
           setP2(prev => ({ ...(prev || {}), finalEvaluations: line.finalEvaluations }));
+
+          // Also ensure trajectories include final scores (deduped in effect)
+          setScoreTraj(prev => {
+            const copy = { ...prev };
+            for (const ev of line.finalEvaluations) {
+              if (typeof ev.score === "number") {
+                const arr = copy[ev.agentId] ? [...copy[ev.agentId]] : [];
+                if (arr.length === 0 || arr[arr.length - 1] !== ev.score) {
+                  arr.push(ev.score);
+                }
+                copy[ev.agentId] = arr;
+              }
+            }
+            return copy;
+          });
         }
       });
 
@@ -245,14 +408,19 @@ export default function Step4({
     setP3(null);
     setP3Busy(true);
     setP3Log([]);
-    pushP3({ type: "info", message: "Starting Phase 3 (aggregation) …" });
+    pushP3({ type: "info", message: "Starting Phase 3 (aggregation; Table 17) …" });
 
     try {
-      const resp = await fetch("/api/debate/phase3", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Accept": "application/x-ndjson" },
-        body: JSON.stringify({ qaPairs, agents, phase2: effectivePhase2 })
-      });
+const resp = await fetch("/api/debate/phase3", {
+  method: "POST",
+  headers: { "Content-Type": "application/json", "Accept": "application/x-ndjson" },
+  body: JSON.stringify({
+    qaPairs,
+    agents,                    // needed for grouping
+    phase2: effectivePhase2,
+    groupBy: "stakeholder"     // default grouping per spec
+  })
+});
 
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({}));
@@ -278,6 +446,17 @@ export default function Step4({
   const onPhase1Click = async () => {
     const disabled =
       effectiveP1Busy || !(agents?.length > 0) || !(qaPairs?.length > 0);
+    const numQuestions = qaPairs?.length ?? 0;
+    const numAgents = agents?.length ?? 0;
+    const expectedEvaluations = numQuestions * numAgents;
+    
+    console.log(">>> [Run Phase 1 button clicked] (Step4.jsx)");
+    console.log(`    [Phase 1] Questions to evaluate: ${numQuestions}`);
+    console.log(`    [Phase 1] Number of agents: ${numAgents}`);
+    console.log(`    [Phase 1] Expected total evaluations: ${expectedEvaluations}`);
+    console.log("    Button disabled?", disabled);
+    console.log(onRunPhase1 ? "    Using external onRunPhase1 handler" : "    Using runPhase1Default");
+    
     if (disabled) return;
     if (onRunPhase1) return onRunPhase1();
     return runPhase1Default();
@@ -291,11 +470,23 @@ export default function Step4({
     return runPhase3Default();
   };
 
+  // Memo: compact agent list with trajectories (✅ this was missing / out of scope before)
+  const agentChips = useMemo(() => {
+    const list = agents || [];
+    return list.map(a => {
+      const id = a.agentId;
+      const traj = scoreTraj[id] || [];
+      const display = traj.length ? traj.join(" → ") : "—";
+      return { id, name: a.agentName || a.name || id, traj: display };
+    });
+  }, [agents, scoreTraj]);
+
   return (
     <div className="card grid" style={{ gap: 18 }}>
       <h2>Step 4 — Three-Phase Stakeholder Debate</h2>
       <p className="muted">
-        First, generate agents (one per persona). Then run Phase 1 (independent evaluations), Phase 2 (multi-turn debate), and Phase 3 (aggregation).
+        First, generate agents (one per persona). Then run Phase 1 (independent evaluations / Table 15),
+        Phase 2 (free debate / Table 16), and Phase 3 (aggregation / Table 17).
       </p>
 
       {/* Generate Agents */}
@@ -322,12 +513,19 @@ export default function Step4({
                   <strong>{a.agentName || a.name || a.agentId}</strong>
                   <span className="muted mono">ID: {a.agentId}</span>
                 </div>
-                
+
+                {/* Trajectory chip if available */}
+                {scoreTraj[a.agentId]?.length ? (
+                  <div className="muted">
+                    <b>Score trajectory:</b> {scoreTraj[a.agentId].join(" → ")}
+                  </div>
+                ) : null}
+
                 <div className="grid" style={{ gap: 4, maxWidth: "100%", overflow: "hidden" }}>
                   <div className="muted" style={{ wordWrap: "break-word", overflowWrap: "break-word" }}><b>Source File:</b> {a.fromFile}</div>
                   <div className="muted" style={{ wordWrap: "break-word", overflowWrap: "break-word" }}><b>Stakeholder:</b> {a.stakeholder}</div>
                   <div className="muted" style={{ wordWrap: "break-word", overflowWrap: "break-word" }}><b>Demographic:</b> {a.demographicInformation}</div>
-                  <div className="muted" style={{ wordWrap: "break-word", overflowWrap: "break-word" }}><b>Perspective:</b> {a.perspective}</div>
+                  <div className="muted" style={{ wordWrap: "break-word", overflowWrap: "overflow-wrap" }}><b>Perspective:</b> {a.perspective}</div>
                   <div className="muted" style={{ wordWrap: "break-word", overflowWrap: "break-word" }}><b>Specialty:</b> {a.specialty}</div>
                   <div className="muted" style={{ wordWrap: "break-word", overflowWrap: "break-word" }}><b>Psychological Traits:</b> {a.psychologicalTraits}</div>
                   <div className="muted" style={{ wordWrap: "break-word", overflowWrap: "break-word" }}><b>Social Relationships:</b> {a.socialRelationships}</div>
@@ -337,14 +535,14 @@ export default function Step4({
                   <summary className="muted" style={{ cursor: "pointer", fontWeight: "bold" }}>
                     📄 Complete Instantiated Prompt (from table14_instantiate.txt)
                   </summary>
-                  <div style={{ 
-                    background: "#f9fafb", 
+                  <div style={{
+                    background: "#f9fafb",
                     border: "1px solid #e5e7eb",
-                    borderRadius: "8px", 
-                    padding: "12px", 
+                    borderRadius: "8px",
+                    padding: "12px",
                     marginTop: "8px",
                     fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-                    fontSize: "13px",
+                    fontSize: "13påx",
                     lineHeight: "1.5",
                     whiteSpace: "pre-wrap",
                     wordWrap: "break-word",
@@ -392,7 +590,7 @@ export default function Step4({
           ))}
         </div>
 
-        {/* Per-agent result cards */}
+        {/* Individual evaluation results */}
         {effectivePhase1?.initialEvaluations?.length > 0 && (
           <div className="grid" style={{ gap: 8, marginTop: 8, maxWidth: "100%", overflow: "hidden" }}>
             <strong className="muted-strong">Phase 1 Results ({effectivePhase1.initialEvaluations.length} total evaluations)</strong>
@@ -403,19 +601,26 @@ export default function Step4({
                   <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline" }}>
                     <div className="row" style={{ gap: 10, alignItems: "baseline", flex: 1, minWidth: 0 }}>
                       <strong style={{ wordWrap: "break-word", overflowWrap: "break-word" }}>{agent?.agentName || agent?.name || ev.agentId}</strong>
-                      <span className="muted mono" style={{ wordWrap: "break-word", overflowWrap: "break-word" }}>Q{(ev.questionIndex ?? 0) + 1}</span>
+                      <span className="muted mono" style={{ wordWrap: "break-word", overflowWrap: "break-word" }}>ID: {ev.agentId}</span>
+                      {typeof ev.questionIndex === 'number' && (
+                        <span className="muted" style={{ wordWrap: "break-word", overflowWrap: "break-word" }}>Q{ev.questionIndex + 1}</span>
+                      )}
                     </div>
                     <span className="pill">{ev.score}</span>
                   </div>
-                  
                   {ev.question && (
-                    <div className="grid" style={{ gap: 4, background: "#f8f9fa", padding: "8px", borderRadius: "4px" }}>
-                      <div><strong>Question:</strong> <span style={{ wordWrap: "break-word", overflowWrap: "break-word" }}>{ev.question}</span></div>
-                      <div><strong>Answer:</strong> <span style={{ wordWrap: "break-word", overflowWrap: "break-word" }}>{ev.answer}</span></div>
+                    <div className="muted" style={{ wordWrap: "break-word", overflowWrap: "break-word", fontWeight: "600" }}>
+                      Q: {ev.question}
                     </div>
                   )}
-                  
-                  <div className="muted" style={{ wordWrap: "break-word", overflowWrap: "break-word" }}><strong>Evaluation:</strong> {ev.rationale}</div>
+                  {ev.answer && (
+                    <div className="muted" style={{ wordWrap: "break-word", overflowWrap: "break-word" }}>
+                      A: {ev.answer}
+                    </div>
+                  )}
+                  <div className="muted" style={{ wordWrap: "break-word", overflowWrap: "break-word" }}>
+                    <strong>Rationale:</strong> {ev.rationale}
+                  </div>
                 </div>
               );
             })}
@@ -427,7 +632,7 @@ export default function Step4({
 
       {/* PHASE 2 */}
       <section className="grid" style={{ gap: 10 }}>
-        <h3>Phase 2 — Coordinated Multi-turn Debate</h3>
+        <h3>Phase 2 — In-Group Free Debate (Table 16)</h3>
         <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <button
             className={`btn ${effectiveP2Busy ? "running" : ""}`}
@@ -442,29 +647,52 @@ export default function Step4({
           >
             {effectiveP2Busy ? "Running Phase 2…" : "Start Debate"}
           </button>
-          <span className="muted">Coordinator selects speakers; agents may revise their scores.</span>
+          <span className="muted">
+            Coordinator selects speakers; agents challenge / reflect / reinforce and may revise their scores.
+          </span>
         </div>
 
-        {/* live log */}
+        {/* Live log (turn-by-turn) */}
         <div className="logbox" ref={p2LogRef}>
           {(p2Log.length ? p2Log : [{ type: "hint", message: "Run Phase 2 after Phase 1." }]).map((l, i) => (
             <div key={i} className={`log ${l.type || "log"}`}>{l.message}</div>
           ))}
         </div>
 
+        {/* Agent score trajectories */}
+        {agentChips.length > 0 && (
+          <div className="grid" style={{ gap: 6 }}>
+            <strong className="muted-strong">Score Trajectories</strong>
+            <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+              {agentChips.map(chip => (
+                <span key={chip.id} className="pill" title={chip.name}>
+                  {chip.name}: {chip.traj}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Transcript view */}
         {effectivePhase2?.transcript?.length > 0 && (
           <div className="grid" style={{ gap: 8, maxWidth: "100%", overflow: "hidden" }}>
             <strong className="muted-strong">Transcript</strong>
             {effectivePhase2.transcript.map((t, i) => (
               <div key={i} className="row" style={{ gap: 8, maxWidth: "100%", overflow: "hidden" }}>
                 <span className="mono muted" style={{ flexShrink: 0 }}>Round {t.round}</span>
-                <span style={{ minWidth: 140, fontWeight: 600, flexShrink: 0, wordWrap: "break-word", overflowWrap: "break-word" }}>{t.speaker}</span>
-                <span style={{ flex: 1, minWidth: 0, wordWrap: "break-word", overflowWrap: "break-word" }}>{t.text}</span>
+                <span style={{ minWidth: 140, fontWeight: 600, flexShrink: 0, wordWrap: "break-word", overflowWrap: "break-word" }}>
+                  {t.speaker === "coordinator" ? "coordinator" : labelForAgent(t.speaker)}
+                </span>
+                <span style={{ flex: 1, minWidth: 0, wordWrap: "break-word", overflowWrap: "break-word" }}>
+                  {t.act ? <em>[{t.act}{t.targetAgentId ? ` → @${labelForAgent(t.targetAgentId)}` : ""}] </em> : null}
+                  {t.text}
+                </span>
               </div>
             ))}
           </div>
         )}
 
+        {/* Final evaluations */}
         {effectivePhase2?.finalEvaluations?.length > 0 && (
           <div className="grid" style={{ gap: 8, maxWidth: "100%", overflow: "hidden" }}>
             <strong className="muted-strong">Final Evaluations</strong>
@@ -510,22 +738,59 @@ export default function Step4({
           ))}
         </div>
 
-        {effectivePhase3 && (
-          <div className="grid" style={{ gap: 8, maxWidth: "100%", overflow: "hidden" }}>
-            <div className="qa-item grid" style={{ gap: 6, maxWidth: "100%", overflow: "hidden" }}>
-              <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline" }}>
-                <strong>Average Score</strong>
-                <span className="muted">{effectivePhase3.averageScore}</span>
-              </div>
-              <div className="muted" style={{ wordWrap: "break-word", overflowWrap: "break-word" }}>{effectivePhase3.feedback}</div>
+{effectivePhase3 && (
+  <div className="grid" style={{ gap: 8, maxWidth: "100%", overflow: "hidden" }}>
+    <div className="qa-item grid" style={{ gap: 6 }}>
+      <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline" }}>
+        <strong>Overall Average</strong>
+        <span className="muted">{effectivePhase3.overallAverage}</span>
+      </div>
+      <div className="muted" style={{ whiteSpace: "pre-wrap", wordWrap: "break-word" }}>
+        {effectivePhase3.overallSummary || effectivePhase3.feedback /* backward-compat */}
+      </div>
+    </div>
+
+    {Array.isArray(effectivePhase3.groupAverages) && effectivePhase3.groupAverages.length > 0 && (
+      <div className="grid" style={{ gap: 6 }}>
+        <strong className="muted-strong">Per-Group Averages</strong>
+        {effectivePhase3.groupAverages.map((g, i) => (
+          <div key={i} className="qa-item grid" style={{ gap: 6 }}>
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline" }}>
+              <strong>{g.group}</strong>
+              <span className="muted">Average: {g.averageScore}</span>
             </div>
+            {/* optional: show members */}
+            {!!(g.members?.length) && (
+              <div className="muted">
+                {g.members.map(m => `${m.name}: ${m.score}`).join(" · ")}
+              </div>
+            )}
           </div>
-        )}
+        ))}
+      </div>
+    )}
+
+    {Array.isArray(effectivePhase3.perGroupSummaries) && effectivePhase3.perGroupSummaries.length > 0 && (
+      <div className="grid" style={{ gap: 6 }}>
+        <strong className="muted-strong">Per-Group Syntheses</strong>
+        {effectivePhase3.perGroupSummaries.map((pg, i) => (
+          <div key={i} className="qa-item grid" style={{ gap: 6 }}>
+            <strong>{pg.group}</strong>
+            <div className="muted"><b>Summary:</b> {pg.summary}</div>
+            <div className="muted"><b>Agreements:</b> {pg.keyAgreements}</div>
+            <div className="muted"><b>Disagreements:</b> {pg.keyDisagreements}</div>
+          </div>
+        ))}
+      </div>
+    )}
+  </div>
+)}
+
       </section>
 
       <hr />
 
-      {/* Existing exports (optional keep) */}
+      {/* Downloads */}
       <h3>Downloads</h3>
       <div className="grid" style={{ gap: 12 }}>
         <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>

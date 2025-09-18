@@ -1,3 +1,4 @@
+// src/steps/Step3.jsx
 import React, { useState } from "react";
 
 export default function Step3({
@@ -25,14 +26,11 @@ export default function Step3({
     }
     try {
       setFinalizeBusy(true);
-      // Save each personas file one by one using your existing savePersonas(idx)
       for (let i = 0; i < personasResults.length; i++) {
         await savePersonas(i);
       }
-      // Only unlock Step 4 after successful saves
       onUnlockStep4();
     } catch (e) {
-      // savePersonas already alerts on error; keep a guard here as well
       console.error(e);
       alert(e?.message || "Failed to finalize & save personas.");
     } finally {
@@ -91,7 +89,7 @@ export default function Step3({
               {Object.entries(paper.data || {}).map(([stakeholderName, personas], sIdx) => (
                 <div key={sIdx} className="stakeholder" style={{ background:'#fbfbfb' }}>
                   <div className="stakeholder-header">
-                    <strong>Stakeholder: {stakeholderName}</strong>
+                    <strong>Stakeholder {sIdx + 1}: {stakeholderName}</strong>
                     <button
                       className="btn secondary"
                       onClick={() => {
@@ -128,17 +126,16 @@ export default function Step3({
                         >✕</button>
                       </div>
 
-                      <input
-                        type="text"
+                      <textarea
                         value={pers.personaName || ""}
-                        placeholder="Persona name"
+                        placeholder="Persona Name"
                         onChange={(e) => {
                           updatePersonasResults(copy => {
                             copy[pIdx].data[stakeholderName][i].personaName = e.target.value;
                           });
                         }}
                         disabled={finalizeBusy || personasBusy}
-                        style={{ fontFamily: 'inherit', fontSize: 'inherit' }}
+                        style={{ fontFamily: 'inherit', fontSize: 'inherit', minHeight: '40px' }}
                       />
 
                       <textarea
@@ -165,8 +162,7 @@ export default function Step3({
                         style={{ fontFamily: 'inherit', fontSize: 'inherit', minHeight: '60px' }}
                       />
 
-                      <input
-                        type="text"
+                      <textarea
                         value={pers.specialty || ""}
                         placeholder="Specialty aligned with the evaluation task"
                         onChange={(e) => {
@@ -175,11 +171,10 @@ export default function Step3({
                           });
                         }}
                         disabled={finalizeBusy || personasBusy}
-                        style={{ fontFamily: 'inherit', fontSize: 'inherit' }}
+                        style={{ fontFamily: 'inherit', fontSize: 'inherit', minHeight: '40px' }}
                       />
 
-                      <input
-                        type="text"
+                      <textarea
                         value={pers.psychologicalTraits || ""}
                         placeholder="Psychological Traits"
                         onChange={(e) => {
@@ -188,7 +183,7 @@ export default function Step3({
                           });
                         }}
                         disabled={finalizeBusy || personasBusy}
-                        style={{ fontFamily: 'inherit', fontSize: 'inherit' }}
+                        style={{ fontFamily: 'inherit', fontSize: 'inherit', minHeight: '40px' }}
                       />
 
                       <textarea

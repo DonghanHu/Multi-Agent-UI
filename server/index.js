@@ -6,7 +6,7 @@ import multer from "multer";
 import fs from "fs-extra";
 import path from "path";
 import { fileURLToPath } from "url";
-import {Readable} from "stream";
+import { Readable } from "stream";
 
 import { pdfBufferToText, chunkText } from "./pdf.js";
 
@@ -167,6 +167,88 @@ app.post("/api/qa/save", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+
+// ======================================================================
+// STEP 1 (alt): SourceText (manual) → Q&A pairs
+// Body: { text: string }
+// ======================================================================
+app.post("/api/qa/generate_from_text", async (req, res) => {
+  try {
+    const text = String(req.body?.text || "").trim();
+    if (!text) return res.status(400).json({ error: "No text provided." });
+
+    if (USE_MOCK) {
+      const dummyPairs = [
+        { question: "What is the main topic?", answer: "This text discusses a topic (MOCK)." },
+        { question: "What is the key takeaway?", answer: "Key takeaway is ... (MOCK)." }
+      ];
+      const filename = `qa-text-dummy-${nowStamp()}.json`;
+      await fs.writeJson(path.join(DATA_DIR, filename), { pairs: dummyPairs }, { spaces: 2 });
+      return res.json({ filename, data: { pairs: dummyPairs } });
+    }
+
+    if (!createStructuredJSON) {
+      return res.status(500).json({ error: "OpenAI client not initialized" });
+    }
+
+    let qaPrompt;
+    try {
+      qaPrompt = await readPrompt("qaPrompt.txt"); // ensure server/prompts/qaPrompt.txt exists
+    } catch (e) {
+      console.error(e);
+      return res.status(500).json({ error: "Missing prompt: server/prompts/qaPrompt.txt" });
+    }
+
+    const chunks = chunkText(text, 12000);
+
+    // Output schema for Q&A pairs
+    const qaSchema = {
+      type: "object",
+      properties: {
+        pairs: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              question: { type: "string" },
+              answer: { type: "string" }
+            },
+            required: ["question", "answer"],
+            additionalProperties: false
+          }
+        }
+      },
+      required: ["pairs"],
+      additionalProperties: false
+    };
+
+    const allPairs = [];
+    for (let i = 0; i < chunks.length; i++) {
+      const input = [
+        { role: "user", content: qaPrompt },
+        { role: "user", content: `SOURCE CHUNK ${i + 1}/${chunks.length}:\n${chunks[i]}` }
+      ];
+
+      const out = await createStructuredJSON({
+        instructions: "Create accurate Q&A pairs grounded strictly in the provided text. Do not hallucinate.",
+        input,
+        schema: qaSchema
+      });
+
+      if (out?.pairs?.length) allPairs.push(...out.pairs);
+    }
+
+    const filename = `qa-text-${nowStamp()}.json`;
+    await fs.writeJson(path.join(DATA_DIR, filename), { pairs: allPairs }, { spaces: 2 });
+    return res.json({ filename, data: { pairs: allPairs } });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message || "Failed to generate Q&A from text." });
+  }
+});
+
+
 
 // ======================================================================
 // STEP 2A: Research papers → Stakeholder Tuples (Section 3.1)
@@ -742,9 +824,9 @@ app.post("/api/debate/phase1", async (req, res) => {
 
     if (USE_MOCK) {
       writeLine(res, { type: "info", message: "Using MOCK for Phase 1." });
-      console.log(`[MOCK Phase 1] Questions: ${qaPairs.length}, Agents: ${agents.length}, Total evaluations: ${qaPairs.length * agents.length}`);
-      
       const initialEvaluations = [];
+
+      // Generate individual evaluations for each Q&A pair by each agent
       for (let qIdx = 0; qIdx < qaPairs.length; qIdx++) {
         const qaPair = qaPairs[qIdx];
         for (let aIdx = 0; aIdx < agents.length; aIdx++) {
@@ -754,12 +836,12 @@ app.post("/api/debate/phase1", async (req, res) => {
             questionIndex: qIdx,
             question: qaPair.question,
             answer: qaPair.answer,
-            score: ((aIdx + qIdx) % 5) + 1, // Vary scores based on agent and question
-            rationale: `Mock evaluation by ${agent.name || agent.agentId} for Q${qIdx + 1}: "${qaPair.question.substring(0, 50)}..."`
+            score: ((aIdx + qIdx) % 5) + 1, // Pseudo-random but deterministic
+            rationale: `Mock rationale for Q${qIdx + 1} by ${agent.name || agent.agentId} (demo only).`
           });
         }
       }
-      
+
       writeLine(res, { initialEvaluations });
       writeLine(res, { type: "success", message: "Phase 1 complete." });
       return res.end();
@@ -783,27 +865,23 @@ app.post("/api/debate/phase1", async (req, res) => {
     };
 
     const results = [];
-    console.log(`[Phase 1] Questions to evaluate: ${qaPairs.length}, Agents: ${agents.length}, Total evaluations: ${qaPairs.length * agents.length}`);
 
     // Loop through each Q&A pair individually
     for (let qIdx = 0; qIdx < qaPairs.length; qIdx++) {
       const qaPair = qaPairs[qIdx];
-      const singleQABlob = JSON.stringify({
-        question: qaPair.question,
-        answer: qaPair.answer
-      }, null, 2);
+      const qaBlob = JSON.stringify({ qaPair }, null, 2);
 
-      writeLine(res, { type: "info", message: `Evaluating Q&A pair ${qIdx + 1}/${qaPairs.length}` });
+      writeLine(res, { type: "info", message: `Evaluating Q&A pair ${qIdx + 1}/${qaPairs.length}: "${qaPair.question.substring(0, 50)}..."` });
 
       // For each Q&A pair, have each agent evaluate it
       for (const a of agents) {
-        writeLine(res, { type: "info", message: `Agent ${a.name || a.agentId} evaluating Q&A ${qIdx + 1}` });
+        writeLine(res, { type: "info", message: `  Agent ${a.name || a.agentId} evaluating...` });
 
         const prompt = [
-          a.instantiationPrompt || a.personaPrompt || "",
+          a.personaPrompt || "",
           "",
           tmpl
-            .replace("{QA_PAIRS}", singleQABlob)
+            .replace("{QA_PAIRS}", qaBlob)
             .replace("{LIKERT_SCALE}",
               "1 – Strongly Disagree; 2 – Disagree; 3 – Neither Agree nor Disagree; 4 – Agree; 5 – Strongly Agree")
         ].join("\n");
@@ -825,15 +903,8 @@ app.post("/api/debate/phase1", async (req, res) => {
           rationale: String(out?.rationale ?? "")
         });
 
-        // Stream partial as we go
-        writeLine(res, { 
-          partial: { 
-            agentId: a.agentId, 
-            questionIndex: qIdx,
-            score: results.at(-1).score,
-            progress: `${results.length}/${qaPairs.length * agents.length}`
-          } 
-        });
+        // Stream partial as we go (optional)
+        writeLine(res, { partial: { agentId: a.agentId, score: results.at(-1).score } });
       }
     }
 
@@ -849,21 +920,25 @@ app.post("/api/debate/phase1", async (req, res) => {
 
 
 /**
- * Phase 2 — Coordinated multi-turn debate (Table 16-like)
+ * Phase 2 — In-Group Free Debate (Table 16 as per-agent turn prompt)
  * Body: {
- *   agents: [{agentId,name,personaPrompt}],
- *   qaPairs: [{question,answer}],
- *   phase1: { initialEvaluations: [{agentId,score,rationale}] },
- *   maxRounds?: number (default 12)
+ *   agents: [{agentId, name?, agentName?, personaPrompt, instantiationPrompt?}],
+ *   qaPairs: [{question, answer}],
+ *   phase1: { initialEvaluations: [{agentId, score, rationale}] },
+ *   maxRounds?: number (default 20)
  * }
- * Returns: { transcript: [{round,speaker,text}], finalEvaluations: [{agentId,score,rationale}] }
+ * Streams NDJSON:
+ *   { message } log lines
+ *   { transcript: [...] } incremental transcript array
+ *   { finalEvaluations: [...] } once at the end
  */
 app.post("/api/debate/phase2", async (req, res) => {
   try {
     startNdjson(res);
-    const { agents = [], qaPairs = [], phase1 = {}, maxRounds = 12 } = req.body || {};
 
-    writeLine(res, { type: "info", message: "Phase 2 started (debate coordinator active)." });
+    const { agents = [], qaPairs = [], phase1 = {}, maxRounds = 15, turnsPerAgent = 2, minSweeps = 2 } = req.body || {};
+    writeLine(res, { type: "info", message: "Phase 2 started (deterministic round-robin)." });
+
     if (!agents.length || !qaPairs.length || !phase1?.initialEvaluations?.length) {
       writeLine(res, { type: "error", message: "Missing qaPairs, agents, or Phase 1 results." });
       return res.end();
@@ -883,101 +958,231 @@ app.post("/api/debate/phase2", async (req, res) => {
       return res.end();
     }
 
-    const coordinatorTmpl = await readPrompt("phase2Coordinator.txt");
-    const speakerTmpl = await readPrompt("phase2Speaker.txt");
+    // Load your Table-16 prompt EXACTLY AS IS
+    const table16TurnPrompt = await readPrompt("phase2Coordinator.txt");
 
-    const coordinatorSchema = {
-      type: "object",
-      properties: {
-        stop: { type: "boolean" },
-        nextAgentId: { type: "string" },
-        reason: { type: "string" }
-      },
-      required: ["stop"],
-      additionalProperties: false
-    };
-
-    const speakerSchema = {
+    // Strict schema: every key in `properties` must be listed in `required`
+    const turnSchema = {
       type: "object",
       properties: {
         comment: { type: "string" },
         final: { type: "boolean" },
         updatedScore: { type: "integer", minimum: 1, maximum: 5 },
-        updatedRationale: { type: "string" }
+        updatedRationale: { type: "string" },
+        act: { type: "string" },            // challenge | reflect | reinforce | ""
+        targetAgentId: { type: "string" }   // another agentId or ""
       },
-      required: ["comment", "final"],
+      required: [
+        "comment",
+        "final",
+        "updatedScore",
+        "updatedRationale",
+        "act",
+        "targetAgentId"
+      ],
       additionalProperties: false
     };
 
     const transcript = [];
+    const qaBlob = JSON.stringify(qaPairs, null, 2);
+    const roster = agents.map(a => ({
+      agentId: a.agentId,
+      name: a.agentName || a.name || a.agentId
+    }));
+
+    const initialMap = new Map((phase1?.initialEvaluations || []).map(e => [e.agentId, e]));
     const finalFlags = new Map(agents.map(a => [a.agentId, false]));
     const finals = new Map();
-    const roster = agents.map(a => ({ agentId: a.agentId, name: a.name || a.agentId }));
-    const initialMap = new Map((phase1?.initialEvaluations || []).map(e => [e.agentId, e]));
-    const qaBlob = JSON.stringify(qaPairs, null, 2);
 
+    let ptr = 0; // round-robin pointer
     const everyoneDone = () => agents.every(a => finalFlags.get(a.agentId));
 
-    for (let round = 1; round <= Math.max(1, Number(maxRounds)); round++) {
+    const labelForAgent = (id) => {
+      const a = agents.find(x => x.agentId === id);
+      return a?.agentName || a?.name || id;
+    };
+
+    const kTurnsPerAgent = Math.max(1, Number(turnsPerAgent));
+    const maxSweeps = Math.max(1, Number(maxRounds));
+    const minSweepsBeforeFinal = Math.max(1, Number(minSweeps));
+
+    //   for (let round = 1; round <= Math.max(1, Number(maxRounds)); round++) {
+    //     if (everyoneDone()) break;
+
+    //     // Pick next non-final agent deterministically
+    //     let picked = null;
+    //     for (let hops = 0; hops < agents.length; hops++) {
+    //       const idx = (ptr + hops) % agents.length;
+    //       const candidate = agents[idx];
+    //       if (!finalFlags.get(candidate.agentId)) {
+    //         picked = candidate;
+    //         ptr = (idx + 1) % agents.length;
+    //         break;
+    //       }
+    //     }
+    //     if (!picked) break;
+
+    //     // coordinator narration (for UI)
+    //     const narr = `Round ${round}: ${labelForAgent(picked.agentId)}'s turn.`;
+    //     transcript.push({ round, speaker: "coordinator", text: narr });
+    //     writeLine(res, { transcript });
+
+    //     // Build messages WITHOUT modifying your Table-16 file content.
+    //     // We send: (1) persona/instantiation (2) Table-16 text with variables baked in
+    //     //          (3) a separate instruction message telling the model to output strict JSON.
+    //     const yourP1 = initialMap.get(picked.agentId) || {};
+    //     const filledTable16 = table16TurnPrompt
+    //       .replace(/\{phase 1 evaluations\}|\{PHASE 1 EVALUATIONS\}|\{PHASE1_EVALS\}/gi, JSON.stringify(phase1?.initialEvaluations || [], null, 2))
+    //       .replace(/\{TRANSCRIPT\}/gi, JSON.stringify(transcript, null, 2))
+    //       .replace(/\{QA_PAIRS\}/gi, qaBlob);
+
+    //     const instructionForJSON = [
+    //      "Return ONLY strict JSON with ALL of the following keys:",
+    // "- comment (string): your turn text.",
+    // "- final (boolean): true if you have no more comments (equivalent of 'NO MORE COMMENTS'), otherwise false.",
+    // "- updatedScore (integer 1..5): your current score (repeat your previous score if unchanged).",
+    // "- updatedRationale (string): your current rationale (repeat your previous rationale if unchanged).",
+    // "- act (string): one of challenge|reflect|reinforce, or empty string if none.",
+    // "- targetAgentId (string): the agent you address, or empty string if none."
+    //     ].join("\n");
+
+    //     let turn;
+    //     try {
+    //       turn = await createStructuredJSON({
+    //         instructions: "You are participating in an in-group free debate. Output MUST be strict JSON per schema.",
+    //         input: [
+    //           { role: "user", content: (picked.instantiationPrompt || picked.personaPrompt || "") },
+    //           { role: "user", content: filledTable16 },
+    //           { role: "user", content: instructionForJSON }
+    //         ],
+    //         schema: turnSchema,
+    //         model: "gpt-4.1-mini",
+    //         temperature: 0.3
+    //       });
+    //     } catch (err) {
+    //       writeLine(res, { type: "error", message: `${labelForAgent(picked.agentId)} turn failed: ${err.message || err}` });
+    //       finalFlags.set(picked.agentId, true);
+    //       continue;
+    //     }
+
+    //     const comment = String(turn?.comment || "");
+    //     const act = turn?.act ? String(turn.act) : undefined;
+    //     const targetAgentId = turn?.targetAgentId ? String(turn.targetAgentId) : undefined;
+    //     const updatedScore = (typeof turn?.updatedScore === "number") ? Number(turn.updatedScore) : undefined;
+    //     const updatedRationale = (typeof turn?.updatedRationale === "string") ? String(turn.updatedRationale) : undefined;
+    //     const final = !!turn?.final;
+
+    //     transcript.push({
+    //       round,
+    //       speaker: picked.agentId,
+    //       text: comment,
+    //       act,
+    //       targetAgentId
+    //     });
+    //     writeLine(res, { transcript });
+
+    //     if (typeof updatedScore === "number" || typeof updatedRationale === "string") {
+    //       finals.set(picked.agentId, {
+    //         score: typeof updatedScore === "number" ? updatedScore : (finals.get(picked.agentId)?.score ?? initialMap.get(picked.agentId)?.score ?? 3),
+    //         rationale: typeof updatedRationale === "string" ? updatedRationale : (finals.get(picked.agentId)?.rationale ?? initialMap.get(picked.agentId)?.rationale ?? "")
+    //       });
+    //     }
+
+    //     if (final) {
+    //       finalFlags.set(picked.agentId, true);
+    //       if (!finals.has(picked.agentId)) {
+    //         const p1 = initialMap.get(picked.agentId);
+    //         finals.set(picked.agentId, {
+    //           score: Number(p1?.score ?? 3),
+    //           rationale: String(p1?.rationale ?? "")
+    //         });
+    //       }
+    //     }
+    //   }
+
+    for (let round = 1; round <= maxSweeps; round++) {
       if (everyoneDone()) break;
 
-      const coordPrompt = coordinatorTmpl
-        .replace("{ROSTER}", JSON.stringify(roster, null, 2))
-        .replace("{PHASE1_EVALS}", JSON.stringify(phase1?.initialEvaluations || [], null, 2))
-        .replace("{TRANSCRIPT}", JSON.stringify(transcript, null, 2))
-        .replace("{FINAL_FLAGS}", JSON.stringify(Object.fromEntries(finalFlags), null, 2));
+      transcript.push({ round, speaker: "coordinator", text: `Round ${round}: each agent up to ${kTurnsPerAgent} turns.` });
+      writeLine(res, { transcript });
 
-      const choose = await createStructuredJSON({
-        instructions: "Return strictly valid JSON as coordinator.",
-        input: [{ role: "user", content: coordPrompt }],
-        schema: coordinatorSchema,
-        model: "gpt-4.1-mini",
-        temperature: 0.0
-      });
+      for (const picked of agents) {
+        if (finalFlags.get(picked.agentId)) continue;
 
-      if (choose?.stop || everyoneDone()) break;
+        for (let t = 0; t < kTurnsPerAgent; t++) {
+          const yourP1 = initialMap.get(picked.agentId) || {};
+          const filledTable16 = table16TurnPrompt
+            .replace(/\{phase 1 evaluations\}|\{PHASE 1 EVALUATIONS\}|\{PHASE1_EVALS\}/gi, JSON.stringify(phase1?.initialEvaluations || [], null, 2))
+            .replace(/\{TRANSCRIPT\}/gi, JSON.stringify(transcript, null, 2))
+            .replace(/\{QA_PAIRS\}/gi, qaBlob);
 
-      const nextId = String(choose?.nextAgentId || "");
-      const chosen = agents.find(a => a.agentId === nextId && !finalFlags.get(nextId));
-      const picked = chosen || agents.find(a => !finalFlags.get(a.agentId));
-      if (!picked) break;
+          // IMPORTANT: instruction text agrees with strict schema (all keys required)
+          const instructionForJSON = [
+            "Return ONLY strict JSON with ALL of the following keys:",
+            "- comment (string): your turn text.",
+            "- final (boolean): set to false until you have completed at least "
+            + `${minSweepsBeforeFinal} sweeps and your last micro-turn in the sweep.`,
+            "- updatedScore (integer 1..5): current score (repeat if unchanged).",
+            "- updatedRationale (string): current rationale (repeat if unchanged).",
+            "- act (string): challenge|reflect|reinforce or empty string.",
+            "- targetAgentId (string): target agentId or empty string."
+          ].join("\n");
 
-      const line = `Round ${round}: coordinator picks ${picked.agentId}${choose?.reason ? ` — ${choose.reason}` : ""}`;
-      transcript.push({ round, speaker: "coordinator", text: line });
-      writeLine(res, { transcript }); // incremental
+          let out;
+          try {
+            out = await createStructuredJSON({
+              instructions: "You are participating in an in-group free debate. Output MUST be strict JSON per schema.",
+              input: [
+                { role: "user", content: (picked.instantiationPrompt || picked.personaPrompt || "") },
+                { role: "user", content: filledTable16 },
+                { role: "user", content: instructionForJSON }
+              ],
+              schema: turnSchema,            // strict schema where ALL props are required
+              model: "gpt-4.1-mini",
+              temperature: 0.3
+            });
+          } catch (err) {
+            writeLine(res, { type: "error", message: `${labelForAgent(picked.agentId)} turn failed: ${err.message || err}` });
+            // DO NOT finalize immediately; let them try next sweep unless we exceed a retry limit
+            const prev = (finals.get(picked.agentId) || initialMap.get(picked.agentId) || { score: 3, rationale: "" });
+            finals.set(picked.agentId, { score: Number(prev.score || 3), rationale: String(prev.rationale || "") });
+            break; // stop this agent’s micro-turns for this sweep, but don't set final flag
+          }
 
-      const p1 = initialMap.get(picked.agentId) || null;
-      const spPrompt = [
-        picked.personaPrompt || "",
-        "",
-        speakerTmpl
-          .replace("{QA_PAIRS}", qaBlob)
-          .replace("{PHASE1_EVAL}", JSON.stringify(p1 || {}, null, 2))
-          .replace("{TRANSCRIPT}", JSON.stringify(transcript, null, 2))
-          .replace("{LIKERT_SCALE}",
-            "1 – Strongly Disagree; 2 – Disagree; 3 – Neither Agree nor Disagree; 4 – Agree; 5 – Strongly Agree")
-      ].join("\n");
+          // Log to transcript and stream
+          transcript.push({
+            round,
+            speaker: picked.agentId,
+            text: String(out?.comment || ""),
+            act: typeof out?.act === "string" ? out.act : "",
+            targetAgentId: typeof out?.targetAgentId === "string" ? out.targetAgentId : ""
+          });
+          writeLine(res, { transcript });
 
-      const resp = await createStructuredJSON({
-        instructions: "Return strictly valid JSON for your debate turn.",
-        input: [{ role: "user", content: spPrompt }],
-        schema: speakerSchema,
-        model: "gpt-4.1-mini",
-        temperature: 0.3
-      });
+          // Track latest score/rationale
+          finals.set(picked.agentId, {
+            score: Number(out?.updatedScore ?? yourP1?.score ?? finals.get(picked.agentId)?.score ?? 3),
+            rationale: String(out?.updatedRationale ?? finals.get(picked.agentId)?.rationale ?? yourP1?.rationale ?? "")
+          });
 
-      const text = String(resp?.comment || "");
-      transcript.push({ round, speaker: picked.agentId, text });
-      writeLine(res, { transcript }); // incremental
+          const wantsFinal = !!out?.final;
+          const canFinalizeNow = (round >= minSweepsBeforeFinal) && (t >= kTurnsPerAgent - 1);
 
-      if (resp?.final) {
-        finalFlags.set(picked.agentId, true);
-        const sc = Number(resp?.updatedScore ?? (p1?.score ?? 3));
-        const ra = String(resp?.updatedRationale ?? p1?.rationale ?? "");
-        finals.set(picked.agentId, { score: sc, rationale: ra });
+          if (wantsFinal && canFinalizeNow) {
+            finalFlags.set(picked.agentId, true);
+            // keep latest score/rationale (you already do this)
+            break; // stop this agent’s micro-turns
+          } else {
+            // ignore early finalization attempts
+            // (optional) normalize for transcript so UI doesn’t think they’re done
+            // out.final = false;
+          }
+        }
+
       }
     }
 
+    // Backfill anyone who never finalized
     for (const a of agents) {
       if (!finals.has(a.agentId)) {
         const p1 = initialMap.get(a.agentId);
@@ -1000,6 +1205,8 @@ app.post("/api/debate/phase2", async (req, res) => {
 });
 
 
+
+
 /**
  * Phase 3 — Aggregation (Table 17-like)
  * Body: { phase2: { finalEvaluations: [...] }, qaPairs: [...] }
@@ -1008,19 +1215,53 @@ app.post("/api/debate/phase2", async (req, res) => {
 app.post("/api/debate/phase3", async (req, res) => {
   try {
     startNdjson(res);
-    const { phase2 = {}, qaPairs = [] } = req.body || {};
+    const { phase2 = {}, qaPairs = [], agents = [], groupBy = "stakeholder" } = req.body || {};
     const finals = Array.isArray(phase2?.finalEvaluations) ? phase2.finalEvaluations : [];
 
-    writeLine(res, { type: "info", message: "Phase 3 started (aggregator active)." });
+    writeLine(res, { type: "info", message: `Phase 3 started (aggregator active). GroupBy = ${groupBy}` });
     if (!finals.length) {
       writeLine(res, { type: "error", message: "Missing Phase 2 final evaluations." });
       return res.end();
     }
 
-    const avg = finals.reduce((a, e) => a + Number(e?.score || 0), 0) / Math.max(1, finals.length);
+    // ---- Compute per-group averages (default by stakeholder) ----
+    const agentById = new Map(agents.map(a => [a.agentId, a]));
+    const groups = new Map(); // groupKey -> { scores: number[], members: [{agentId, score, rationale, name}] }
+
+    for (const ev of finals) {
+      const a = agentById.get(ev.agentId) || {};
+      const key = (a?.[groupBy]) || "ungrouped";
+      if (!groups.has(key)) groups.set(key, { scores: [], members: [] });
+      const g = groups.get(key);
+      g.scores.push(Number(ev.score || 0));
+      g.members.push({
+        agentId: ev.agentId,
+        name: a?.agentName || a?.name || ev.agentId,
+        score: Number(ev.score || 0),
+        rationale: String(ev.rationale || "")
+      });
+    }
+
+    const groupAverages = Array.from(groups.entries()).map(([group, g]) => {
+      const avg = g.scores.reduce((s, x) => s + x, 0) / Math.max(1, g.scores.length);
+      return {
+        group,
+        averageScore: Number(avg.toFixed(2)),
+        members: g.members
+      };
+    });
+
+    // Global average across *all* finals
+    const globalAvg = finals.reduce((a, e) => a + Number(e?.score || 0), 0) / Math.max(1, finals.length);
 
     if (USE_MOCK) {
-      writeLine(res, { result: { feedback: "Mock aggregator synthesis.", averageScore: Number(avg.toFixed(2)) }});
+      writeLine(res, {
+        result: {
+          overallSummary: "Mock aggregator synthesis.",
+          overallAverage: Number(globalAvg.toFixed(2)),
+          groupAverages
+        }
+      });
       writeLine(res, { type: "success", message: "Phase 3 complete." });
       return res.end();
     }
@@ -1030,20 +1271,54 @@ app.post("/api/debate/phase3", async (req, res) => {
       return res.end();
     }
 
-    const tmpl = await readPrompt("phase3Aggregator.txt");
+    // ---- Prompt & schema ----
+    const tmpl = await readPrompt("phase3Aggregator.txt"); // keep your text, we add structure here
     const aggSchema = {
       type: "object",
-      properties: { feedback: { type: "string" } },
-      required: ["feedback"],
+      properties: {
+        overallSummary: { type: "string" },             // qualitative synthesis across all groups
+        perGroupSummaries: {                             // qualitative synthesis per group
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              group: { type: "string" },
+              summary: { type: "string" },
+              keyAgreements: { type: "string" },
+              keyDisagreements: { type: "string" }
+            },
+            required: ["group", "summary", "keyAgreements", "keyDisagreements"],
+            additionalProperties: false
+          }
+        }
+      },
+      required: ["overallSummary", "perGroupSummaries"],
       additionalProperties: false
     };
 
-    const prompt = tmpl
-      .replace("{FINALS}", JSON.stringify(finals, null, 2))
-      .replace("{QA_PAIRS}", JSON.stringify(qaPairs, null, 2));
+    // Build compact, model-friendly payload
+    const modelInput = {
+      qaPairs,
+      groupAverages,           // has group, averageScore, members [{name, score, rationale}]
+    };
+
+    const prompt = [
+      tmpl.trim(),
+      "",
+      "### INPUT (JSON)",
+      JSON.stringify(modelInput, null, 2),
+      "",
+      "### OUTPUT FORMAT (STRICT JSON)",
+      `{
+  "overallSummary": "...",
+  "perGroupSummaries": [
+    { "group": "Parents", "summary": "...", "keyAgreements": "...", "keyDisagreements": "..." }
+  ]
+}`
+    ].join("\n");
 
     const result = await createStructuredJSON({
-      instructions: "Return strictly valid JSON for the aggregation.",
+      instructions: "Return strictly valid JSON per schema.",
       input: [{ role: "user", content: prompt }],
       schema: aggSchema,
       model: "gpt-4.1-mini",
@@ -1052,8 +1327,10 @@ app.post("/api/debate/phase3", async (req, res) => {
 
     writeLine(res, {
       result: {
-        feedback: String(result?.feedback ?? ""),
-        averageScore: Number(avg.toFixed(2))
+        overallSummary: String(result?.overallSummary ?? ""),
+        perGroupSummaries: Array.isArray(result?.perGroupSummaries) ? result.perGroupSummaries : [],
+        overallAverage: Number(globalAvg.toFixed(2)),
+        groupAverages
       }
     });
     writeLine(res, { type: "success", message: "Phase 3 complete." });
@@ -1064,18 +1341,19 @@ app.post("/api/debate/phase3", async (req, res) => {
   }
 });
 
+
 // ======================================================================
 // STEP 4 — Generate Agents from Personas using table14_instantiate.txt
 // ======================================================================
 app.post("/api/agents/generate_from_personas", async (req, res) => {
   try {
     const { personasResults = [], taskDescription = "" } = req.body || {};
-    
+
     console.log(`[API] =============== GENERATE AGENTS DEBUG ===============`);
     console.log(`[API] Received personasResults:`, JSON.stringify(personasResults, null, 2));
     console.log(`[API] Task Description:`, taskDescription);
     console.log(`[API] USE_MOCK:`, USE_MOCK);
-    
+
     if (!personasResults.length) {
       return res.status(400).json({ error: "No personas provided." });
     }
@@ -1084,7 +1362,7 @@ app.post("/api/agents/generate_from_personas", async (req, res) => {
 
     if (USE_MOCK) {
       console.log("[API] Using MOCK mode for agent generation");
-      const mockAgents = personasResults.flatMap((paper, paperIdx) => 
+      const mockAgents = personasResults.flatMap((paper, paperIdx) =>
         Object.entries(paper.data || {}).flatMap(([stakeholderName, personas], stakeholderIdx) =>
           (personas || []).map((persona, personaIdx) => ({
             agentId: `agent_${paperIdx}_${stakeholderIdx}_${personaIdx}`,
@@ -1101,14 +1379,14 @@ app.post("/api/agents/generate_from_personas", async (req, res) => {
           }))
         )
       );
-      
+
       const filename = `agents-generated-${nowStamp()}.json`;
       await fs.writeJson(path.join(EVALS_DIR, filename), { agents: mockAgents }, { spaces: 2 });
-      
-      return res.json({ 
-        agents: mockAgents, 
+
+      return res.json({
+        agents: mockAgents,
         filename,
-        count: mockAgents.length 
+        count: mockAgents.length
       });
     }
 
@@ -1128,31 +1406,31 @@ app.post("/api/agents/generate_from_personas", async (req, res) => {
     }
 
     const agents = [];
-    
+
     // Process each paper's personas
     for (const paper of personasResults) {
       const paperFile = paper.file || "unknown.pdf";
       console.log(`[API] Processing paper: ${paperFile}`);
-      
+
       // Process each stakeholder's personas
       for (const [stakeholderName, personas] of Object.entries(paper.data || {})) {
         console.log(`[API] Processing stakeholder: ${stakeholderName} (${(personas || []).length} personas)`);
-        
+
         // Process each persona
         for (let i = 0; i < (personas || []).length; i++) {
           const persona = personas[i];
           const agentId = `agent_${paper.filename || paperFile}_${stakeholderName}_${i}`.replace(/[^a-zA-Z0-9_]/g, '_');
-          
+
           // Fill in the template with persona data
           console.log(`[API] Processing agent: ${persona.personaName} from ${stakeholderName}`);
-          
+
           const instantiatedPrompt = instantiateTemplate
             .replace('{agent_name}', persona.personaName || `Agent ${i + 1}`)
             .replace(/\{\}/g, (match, offset) => {
               const beforeMatch = instantiateTemplate.substring(0, offset);
               const lineStart = beforeMatch.lastIndexOf('\n') + 1;
               const currentLine = instantiateTemplate.substring(lineStart, offset + 2);
-              
+
               if (currentLine.includes('demographic information')) return persona.demographicInformation || '';
               if (currentLine.includes('perspective')) return persona.perspective || '';
               if (currentLine.includes('specialty')) return persona.specialty || '';
@@ -1162,7 +1440,7 @@ app.post("/api/agents/generate_from_personas", async (req, res) => {
               if (currentLine.includes('content to be evaluated')) return '[Content will be provided during evaluation]';
               if (currentLine.includes('context for the evaluation')) return '[Context will be provided during evaluation]';
               if (currentLine.includes('format for your evaluation')) return '[Format will be specified during evaluation]';
-              
+
               return '[To be filled during evaluation]';
             });
 
@@ -1186,15 +1464,15 @@ app.post("/api/agents/generate_from_personas", async (req, res) => {
     }
 
     console.log(`[API] Generated ${agents.length} agents total`);
-    
+
     // Save to evaluations directory
     const filename = `agents-generated-${nowStamp()}.json`;
     await fs.writeJson(path.join(EVALS_DIR, filename), { agents, taskDescription }, { spaces: 2 });
-    
-    res.json({ 
-      agents, 
+
+    res.json({
+      agents,
       filename,
-      count: agents.length 
+      count: agents.length
     });
   } catch (err) {
     console.error("Error generating agents from personas:", err);
