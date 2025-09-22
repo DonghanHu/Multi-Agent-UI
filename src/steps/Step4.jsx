@@ -296,7 +296,7 @@ export default function Step4({
       const resp = await fetch("/api/debate/phase2", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Accept": "application/x-ndjson" },
-        body: JSON.stringify({ qaPairs, agents, phase1: effectivePhase1, maxRounds: 12 })
+        body: JSON.stringify({ qaPairs, agents, phase1: effectivePhase1, maxRounds: 7 })
       });
 
       if (!resp.ok) {

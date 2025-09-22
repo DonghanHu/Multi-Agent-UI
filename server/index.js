@@ -925,7 +925,7 @@ app.post("/api/debate/phase1", async (req, res) => {
  *   agents: [{agentId, name?, agentName?, personaPrompt, instantiationPrompt?}],
  *   qaPairs: [{question, answer}],
  *   phase1: { initialEvaluations: [{agentId, score, rationale}] },
- *   maxRounds?: number (default 20)
+ *   maxRounds?: number (default 8)
  * }
  * Streams NDJSON:
  *   { message } log lines
@@ -936,7 +936,7 @@ app.post("/api/debate/phase2", async (req, res) => {
   try {
     startNdjson(res);
 
-    const { agents = [], qaPairs = [], phase1 = {}, maxRounds = 15, turnsPerAgent = 2, minSweeps = 2 } = req.body || {};
+    const { agents = [], qaPairs = [], phase1 = {}, maxRounds = 8, turnsPerAgent = 2, minSweeps = 2 } = req.body || {};
     writeLine(res, { type: "info", message: "Phase 2 started (deterministic round-robin)." });
 
     if (!agents.length || !qaPairs.length || !phase1?.initialEvaluations?.length) {
@@ -1003,7 +1003,9 @@ app.post("/api/debate/phase2", async (req, res) => {
     };
 
     const kTurnsPerAgent = Math.max(1, Number(turnsPerAgent));
-    const maxSweeps = Math.max(1, Number(maxRounds));
+    const requestedSweeps = Math.max(1, Number(maxRounds));
+    const maxSweeps = Math.min(requestedSweeps, 7);
+    console.log("maxSweepts is: ", maxSweeps);
     const minSweepsBeforeFinal = Math.max(1, Number(minSweeps));
 
     //   for (let round = 1; round <= Math.max(1, Number(maxRounds)); round++) {

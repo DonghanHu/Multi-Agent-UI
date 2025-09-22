@@ -52,7 +52,8 @@ export default function App() {
       const fd = new FormData();
       qaFiles.forEach((f) => fd.append("files", f));
       const { data } = await axios.post("/api/qa/generate", fd);
-      setQaPairs(data.data.pairs || []);
+      //setQaPairs(data.data.pairs || []);
+      setQaPairs(prev => dedupePairs([...prev, ...(data?.data?.pairs || [])]));
       setQaFilename(data.filename);
       setStep(1);
     } catch (e) {
@@ -61,6 +62,16 @@ export default function App() {
       setQaBusy(false);
     }
   }
+
+  function dedupePairs(pairs) {
+  const seen = new Set();
+  return pairs.filter(p => {
+    const key = (p.question || "") + "||" + (p.answer || "");
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
 
   async function handleNextFromStep1() {
     if (!qaPairs.length) return alert("Generate Q&A first.");
@@ -261,7 +272,7 @@ export default function App() {
         agents,
         qaPairs,
         phase1,
-        maxRounds: 12,
+        maxRounds: 8,
       });
       setPhase2(data);
     } catch (e) {
